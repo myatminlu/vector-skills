@@ -30,6 +30,12 @@ ln -s <local-path>/vector-skills/skills/nestjs-dev-guidelines \
 
 Next Claude Code session will load the skill automatically. No restart or install step.
 
+## Updating a skill
+
+```bash
+npx skills update
+```
+
 ## Editing a skill
 
 Edit the files in place. Changes take effect on the next Claude Code session.
