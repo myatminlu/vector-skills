@@ -1,6 +1,6 @@
 ---
 name: nestjs-dev-guidelines
-description: Complete NestJS and Node.js backend production standards — folder structure, naming conventions, code quality, API design, database schema design, security, authentication, pagination, filtering, sorting, standard response envelopes, error handling, pipelines, interceptors, guards, validation, testing, logging, observability, background jobs, domain events, and code review rules. Use this skill every time you touch a NestJS or Node.js backend — writing new modules, controllers, services, DTOs, database schemas, migrations, creating or reviewing endpoints, designing APIs, refactoring, or acting as a senior backend engineer. Apply automatically whenever the user mentions NestJS, Nest, backend, API, controller, service, module, DTO, repository, TypeORM, Prisma, Drizzle, Postgres, pagination, validation, auth, JWT, rate limiting, code review, or asks for production-grade backend work. Also apply when building AI product backends needing LLM gateways, SSE streaming, usage metering, or cost tracking.
+description: 'Production-grade NestJS and TypeScript/Node.js backend standards — folder layout, naming, code quality, REST API design, DB schema, security, auth, pagination, response envelopes, error handling, pipes/interceptors/guards, validation, testing, logging, observability, BullMQ jobs, domain events, and code review rules. Apply when the project is a NestJS or Node/TypeScript backend and the user is writing or reviewing modules, controllers, services, DTOs, repositories, schemas, migrations, or endpoints. Triggers include NestJS, Nest, @nestjs/* packages, nest-cli.json, *.module.ts / *.controller.ts / *.service.ts files, TypeORM, Prisma, Drizzle, raw pg, class-validator, BullMQ, nestjs-pino, Better Auth, JWT in a Node context, and PR review of a NestJS/Node diff. Also apply for AI product backends on Node with LLM gateways, SSE streaming, usage metering, or quotas. Do NOT trigger on non-Node backends (Django, Rails, Spring, Go, Laravel) even if they mention APIs or controllers.'
 ---
 
 # NestJS Dev Guidelines
@@ -9,18 +9,6 @@ A complete set of production-grade NestJS and Node.js backend standards. Apply t
 whenever working on a NestJS project — writing new code, reviewing PRs, or making architecture
 decisions. Think like a senior backend engineer: consistency over cleverness, explicit over
 implicit, boundaries over shortcuts.
-
-## When to apply this skill
-
-**Always apply** when any of these are true:
-- The project has `@nestjs/*` in `package.json`, a `nest-cli.json`, or `*.module.ts` / `*.controller.ts` / `*.service.ts` files
-- The user mentions NestJS, Nest, a controller, service, module, DTO, guard, pipe, interceptor
-- The user asks to build, add, refactor, or review a backend feature, endpoint, or database schema
-- The user asks you to act as a senior backend engineer, or asks for production-grade backend work
-- The user is building an AI product backend (LLM gateway, streaming, metering)
-
-**Also apply** when working on generic Node.js backends — most rules (naming, API design, DB
-design, code review) transfer directly.
 
 ## How to use this skill
 
@@ -33,30 +21,51 @@ design, code review) transfer directly.
 
 ## Non-negotiables (top-level rules, never break these)
 
-1. **Never put business logic in a controller.** Controllers only validate input, delegate to a
-   service, and shape the response. Testable logic lives in services.
-2. **Always validate external input.** Every controller that accepts a body/query/param uses a
-   DTO with `class-validator` decorators, and `ValidationPipe` is global with `whitelist: true`,
-   `forbidNonWhitelisted: true`, `transform: true`. See `09-validation.md`.
-3. **Never trust the client.** IDs from the URL must be checked against the authenticated user's
-   ownership. Filters/sorts are whitelisted. Mass-assignment is impossible due to `whitelist`.
+Each rule has a **Why** so you can reason about edge cases instead of applying it blindly.
+
+1. **No business logic in a controller.** Controllers validate input, delegate to a service, and
+   shape the response. Nothing else.
+   *Why:* controllers are thin HTTP adapters. Logic in them can't be unit-tested without booting
+   the framework, and it pulls HTTP concerns into domain code. See `04-code-quality.md`.
+2. **Every external input goes through a DTO.** Body, query, and param DTOs use
+   `class-validator`; `ValidationPipe` is global with `whitelist: true`, `forbidNonWhitelisted:
+   true`, `transform: true`.
+   *Why:* DTOs are the one choke point where unknown fields, bad types, and injection payloads
+   are stopped. Skipping one means you trust the client. See `09-validation.md`.
+3. **Never trust the client.** Every ID from the URL is checked against the authenticated
+   user/org's ownership. Filter and sort fields are whitelisted. Mass-assignment is prevented
+   by `whitelist`.
+   *Why:* IDOR and mass-assignment are the two most common application-level breaches. They only
+   exist when code assumes "if the token is valid, the payload is fine." See `11`, `12`.
 4. **One module owns its tables.** No cross-module raw DB reads. If module B needs data from
-   module A, call A's service (DI) or subscribe to A's events. See `03-module-design.md`.
+   module A, call A's service (DI) or subscribe to A's events.
+   *Why:* shared table access makes every schema change a cross-team coordination problem.
+   Modules become coupled through the DB instead of through APIs. See `03-module-design.md`.
 5. **snake_case in the database, camelCase in code.** Tables plural, columns snake_case,
-   primary keys `id`, foreign keys `<entity>_id`. See `13-database-design.md`.
+   primary keys `id`, foreign keys `<entity>_id`.
+   *Why:* each ecosystem has a convention; mixing them creates a lifetime of mapping bugs and
+   makes ad-hoc SQL painful. Pick the convention of the side that's hardest to change (the DB).
+   See `13-database-design.md`.
 6. **Every response is enveloped.** `{ data, meta?, error? }`. Errors always include
-   `{ code, message, traceId }`, plus HTTP status. See `07-standard-responses.md` and
-   `10-error-handling.md`.
-7. **Pagination is required for any list endpoint.** Cursor-based by default, offset only when
+   `{ code, message, traceId }`, plus the correct HTTP status.
+   *Why:* a consistent envelope lets clients write one error handler and one pagination handler
+   that works everywhere, and lets support triage issues by `traceId`. See `07`, `10`.
+7. **Pagination is required for any list endpoint.** Cursor-based by default; offset only when
    the product needs page numbers. Both return `meta` with pagination info.
-   See `08-pagination-filters-sorting.md`.
-8. **Secrets come from env only.** No secrets in code, no secrets in logs. Validate env with
-   Zod at boot — fail fast. See `20-configuration.md` and `11-security.md`.
+   *Why:* an unpaginated list is a latent OOM and a latent DB outage. Cursor is stable under
+   insertion; offset scales badly past a few pages. See `08`.
+8. **Secrets come from env only — validated with Zod at boot.** No secrets in code, no secrets
+   in logs. Invalid env = crash before serving traffic.
+   *Why:* a missing/malformed env var caught at boot is a minor incident; caught at runtime on
+   the hot path, it's a customer outage. See `20`, `11`.
 9. **Structured logs, redacted.** `nestjs-pino` with JSON in prod; redact `authorization`,
    `cookie`, `set-cookie`, `password`, `token`. Correlation ID on every log line.
-   See `21-logging.md`.
-10. **Test at boundaries, not internals.** Unit-test services with mocked dependencies; e2e-test
-    controllers through the HTTP layer; never mock the code under test. See `23-testing.md`.
+   *Why:* plain-text logs can't be queried at scale, and one unredacted `Authorization` header
+   is a credential leak with a long tail. See `21`.
+10. **Test at boundaries, not internals.** Unit-test services with mocked dependencies;
+    e2e-test controllers through the HTTP layer; never mock the class under test.
+    *Why:* mocking the code under test just re-asserts the mock. Tests should verify the
+    contract (HTTP, DB, external calls), not the implementation. See `23`.
 
 ## Senior-engineer mindset (decision trees)
 
