@@ -378,5 +378,4 @@ export class SummarizerService {
 - [`27-ai-streaming-sse.md`](./27-ai-streaming-sse.md) — streaming LLM output
 - [`28-ai-usage-metering-cost.md`](./28-ai-usage-metering-cost.md) — cost + quotas
 - [`22-observability.md`](./22-observability.md) — LLM traces
-- `claude-api` skill — Claude-specific prompt caching and migration
 - `gemini-interactions-api` skill — Gemini-specific patterns
