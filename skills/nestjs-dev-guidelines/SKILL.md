@@ -12,12 +12,31 @@ implicit, boundaries over shortcuts.
 
 ## How to use this skill
 
-1. Before writing or reviewing code, scan the **Non-Negotiables** below.
+1. Before writing or reviewing code, scan `references/00-execution-discipline.md` and the
+   **Non-Negotiables** below.
 2. For file placement, module boundaries, or refactor decisions, use the **Decision Trees**.
 3. For deep detail on a topic, open the matching `references/NN-<topic>.md` file. Each is
    self-contained: TL;DR, rules, good/bad examples, anti-patterns, and a review checklist.
 4. When reviewing a PR, run through `references/29-code-review-checklist.md` + the topic
    references relevant to the diff.
+
+## Execution discipline
+
+Apply these rules before touching NestJS-specific details. They exist to reduce the usual LLM
+failure modes: silent assumptions, overbuilt code, broad refactors, and unverified fixes.
+
+1. **Think before coding.** State assumptions. If the task is ambiguous, ask or explicitly list
+   the plausible interpretations instead of silently picking one.
+2. **Prefer the smallest correct change.** No speculative flags, abstractions, helpers, config,
+   or edge-case handling unless the task or codebase clearly needs them.
+3. **Make surgical edits.** Touch only the lines needed for the request. Do not clean up
+   unrelated code, comments, or formatting just because you are nearby.
+4. **Define what success looks like.** Convert vague requests into checks you can verify:
+   regression test, unit test, e2e test, typecheck, lint, build, or a concrete manual check.
+5. **Stop when confused.** Name the uncertainty early. Short clarifying questions are cheaper
+   than rewriting the wrong code.
+
+Open `references/00-execution-discipline.md` for the full checklist and examples.
 
 ## Non-negotiables (top-level rules, never break these)
 
@@ -103,6 +122,7 @@ Read the full reference file when you need detail. The number prefix is for stab
 
 | # | File | Rule in one line |
 |---|---|---|
+| 00 | `00-execution-discipline.md` | Think first, keep changes small, edit surgically, define success criteria, verify before claiming done |
 | 01 | `01-folder-structure.md` | `src/{core,common,integrations,modules,events,commands}` — one place for each kind of code |
 | 02 | `02-naming-conventions.md` | `camelCase` vars, `PascalCase` classes, `snake_case` DB, `kebab-case.ts` files, `SCREAMING_SNAKE` env |
 | 03 | `03-module-design.md` | One module per bounded context; `@Global()` only for true app-wide infra |
@@ -139,6 +159,7 @@ Read the full reference file when you need detail. The number prefix is for stab
 
 | You are doing... | Open... |
 |---|---|
+| Starting any implementation or bug fix | 00, 05 |
 | Starting a new feature module | 01, 03, 04 |
 | Designing a new endpoint | 06, 07, 08, 09 |
 | Returning errors consistently | 10 |
@@ -180,6 +201,8 @@ AI bit is a module, not a framework.
 
 ## Meta
 
+- **Execution discipline before framework detail.** Small, explicit, verified changes beat fast,
+  broad, clever ones.
 - **Rules > style preferences.** These are rules because they prevent real bugs or pay back
   in maintainability. Style debates are not covered.
 - **Consistency > cleverness.** If a repo has an established pattern that differs from this
