@@ -19,10 +19,10 @@ and symlink each skill you want active:
 
 ```bash
 # one-time: clone the library
-git clone https://github.com/myatminlu/vector-skills.git ~/Documents/Dev/vector-skills
+git clone <repo-url> <local-path>/vector-skills
 
 # for each skill you want, add a symlink
-ln -s ~/Documents/Dev/vector-skills/nestjs-dev-guidelines \
+ln -s <local-path>/vector-skills/nestjs-dev-guidelines \
       ~/.claude/skills/nestjs-dev-guidelines
 ```
 
@@ -33,7 +33,7 @@ Next Claude Code session will load the skill automatically. No restart or instal
 Edit the files in place. Changes take effect on the next Claude Code session.
 
 ```bash
-cd ~/Documents/Dev/vector-skills/nestjs-dev-guidelines
+cd <local-path>/vector-skills/nestjs-dev-guidelines
 vim references/08-pagination-filters-sorting.md
 
 # optional structural validation
@@ -46,7 +46,7 @@ git push
 ## Adding a new skill
 
 ```bash
-cd ~/Documents/Dev/vector-skills
+cd <local-path>/vector-skills
 mkdir my-new-skill
 cd my-new-skill
 # Create SKILL.md (required) + optional references/, evals/, assets/, scripts/
@@ -64,6 +64,18 @@ A skill is a folder with at least a `SKILL.md` file containing YAML frontmatter
 - Write `description` in the frontmatter so Claude triggers the skill reliably
   (concrete keywords + "use when X" framing). Max 1024 characters.
 - Add `evals/evals.json` with 5–10 substantive test tasks to catch regressions.
+
+## Author
+
+Built and maintained by **Myat Min Lu** — a developer curating a personal
+collection of Claude Code skills distilled from day-to-day engineering work.
+Each skill captures the conventions, rules, and hard-won lessons worth teaching
+an agent once so they don't have to be re-explained every session.
+
+- GitHub: [@myatminlu](https://github.com/myatminlu)
+- Contact: myatminlu@myvectorai.com
+
+Contributions, forks, and feedback are welcome.
 
 ## License
 

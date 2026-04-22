@@ -1,0 +1,82 @@
+[
+  {
+    "query": "hey i'm adding a payments list endpoint to our nest js app (it's a monorepo, apps/api, raw pg, better auth already hooked up). needs filter by status, date range, cursor pagination. can you scaffold the module + dto + repo + sql for me? current pattern in the repo is kebab-case files under src/modules/*",
+    "should_trigger": true
+  },
+  {
+    "query": "can you review this PR? it's a new @Controller('webhook') in our nest backend — the guy used @Body() body: any, concatenated a stripe id into a sql update, and returns { success: true }. want a senior review with blockers vs suggestions, structured.",
+    "should_trigger": true
+  },
+  {
+    "query": "we need to redesign the postgres schema for our AI chat thing — users, orgs, conversations, messages (with streaming partials), tool_calls, attachments. multi-tenant, soft delete, cursor pagination on messages. give me the CREATE TABLE + indexes. DB is shared with our nestjs backend.",
+    "should_trigger": true
+  },
+  {
+    "query": "my payments.service.ts is like 900 lines and i keep adding to it. how should i split it / what pattern makes sense? constructor already injects 6 things",
+    "should_trigger": true
+  },
+  {
+    "query": "add a BullMQ worker that sends outbound webhooks to user-configured urls. need retries with backoff, DLQ for poison jobs, HMAC signature, timeout per attempt, idempotent. show me producer + worker + the DB/schema needed. we're on nest 11.",
+    "should_trigger": true
+  },
+  {
+    "query": "Our API has inconsistent error shapes — some return 200 with {success:false,error:'bad email'}, some throw HttpException with raw strings, some return 500 on validation failures. standardize everything: envelope, error codes, global filter, class-validator mapping. code snippets pls.",
+    "should_trigger": true
+  },
+  {
+    "query": "need to add a csv export endpoint for a user's payments. table has 100k+ rows per user. stream it, no OOM, authed, rate-limited. the app is nestjs with raw pg.",
+    "should_trigger": true
+  },
+  {
+    "query": "scaffold a summarize feature in our nest ai backend — takes long text, returns {title, bullets, tone}. needs LLM gateway (provider-agnostic), zod output validation, per-user usage metering, monthly quota enforcement, prompt cache on the system prompt. don't import @anthropic-ai/sdk directly in the feature.",
+    "should_trigger": true
+  },
+  {
+    "query": "users can currently access other orgs' data by guessing ids. add proper multi-tenant authz: memberships, roles (owner/admin/member), every query scoped. guard pattern + schema change + service/controller adjustments.",
+    "should_trigger": true
+  },
+  {
+    "query": "our .ts backend uses nestjs-pino but we're leaking auth headers into logs on error. fix the redaction config and show how correlation id should propagate through the whole request.",
+    "should_trigger": true
+  },
+  {
+    "query": "need to add pagination to my django rest framework endpoint. should i use the built-in PageNumberPagination or CursorPagination? got ~2M rows in the queryset",
+    "should_trigger": false
+  },
+  {
+    "query": "review this rails controller for me — it has mass-assignment risk and the strong params look off. using rails 7.1, devise for auth.",
+    "should_trigger": false
+  },
+  {
+    "query": "designing a postgres schema for a go/gin api. users, subscriptions, invoices. want soft delete, uuid ids, timestamptz. give me the DDL and indexes.",
+    "should_trigger": false
+  },
+  {
+    "query": "i'm building a spring boot microservice, need to add JWT auth with refresh tokens. using spring-security 6. show me the filter chain config.",
+    "should_trigger": false
+  },
+  {
+    "query": "our laravel 10 api returns inconsistent error envelopes across endpoints. want a global exception handler that standardizes the shape. eloquent relationships are fine, just the error layer.",
+    "should_trigger": false
+  },
+  {
+    "query": "fastapi + sqlalchemy — add cursor pagination to a /messages endpoint. pydantic v2 for request/response. python 3.11.",
+    "should_trigger": false
+  },
+  {
+    "query": "can you help me optimize this react query hook? it's refetching too aggressively on window focus and breaking our dashboard. using @tanstack/react-query v5.",
+    "should_trigger": false
+  },
+  {
+    "query": "writing a cli tool in plain node.js (no framework, commonjs, node 18) that syncs files from s3 to local. just a script, ~200 lines. want it resilient to network flakes.",
+    "should_trigger": false
+  },
+  {
+    "query": "trying to decide between prisma and drizzle for a new next.js app (app router, server actions). it's basically a CRUD admin panel, no separate api layer.",
+    "should_trigger": false
+  },
+  {
+    "query": "our python etl pipeline (airflow, pandas) is OOMing on the invoice aggregation step. need to stream instead of loading the whole dataframe. what's the idiomatic fix?",
+    "should_trigger": false
+  }
+]

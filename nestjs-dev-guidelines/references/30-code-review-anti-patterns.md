@@ -3,6 +3,67 @@
 A grep-able list of common anti-patterns with good-vs-bad code. Use this during reviews: if
 you spot the "bad", quote the "good" in your comment.
 
+## Table of contents
+
+Jump directly to the anti-pattern relevant to the diff you are reviewing.
+
+**Structure & validation**
+- A1 — Business logic in controller
+- A2 — Missing DTO / validation
+- A35 — Hand-coded validation in service
+
+**SQL & data safety**
+- A3 — SQL string concatenation
+- A5 — Mass-assignment
+- A8 — User-supplied sort / filter on raw column
+- A27 — `SELECT *`
+- A26 — N+1 query
+
+**API shape & errors**
+- A4 — Returning `{ success: false }` with HTTP 200
+- A28 — Response envelope per endpoint
+- A29 — Missing `headersSent` guard in global filter
+- A10 — Silent catch
+- A11 — Bare `throw e` or no-op try/catch
+
+**Auth & security**
+- A6 — Missing auth guard
+- A13 — Logging PII / secrets
+- A33 — Webhook without signature verification
+
+**Lists & pagination**
+- A7 — Unbounded list endpoint
+- A31 — Unbounded `Promise.all` over user-controlled input
+
+**External calls & resilience**
+- A9 — Naked fetch without timeout
+- A21 — Non-idempotent queue handler
+
+**Observability**
+- A12 — `console.log` in app code
+
+**Database schema**
+- A14 — Float money
+- A15 — Timestamp without tz
+- A16 — Missing FK index
+- A17 — Cross-module DB read
+- A18 — Editing a shipped migration
+- A19 — `synchronize: true` in production
+- A20 — Cascading into a huge child table
+
+**AI / LLM features**
+- A22 — Direct LLM SDK from a feature
+- A23 — Unvalidated LLM JSON
+- A32 — LLM call without cost/quota accounting
+
+**Testing**
+- A24 — Mock of the class under test
+- A25 — Vacuous test
+
+**Module wiring**
+- A30 — `@Global()` on a feature module
+- A34 — Env read scattered across the codebase
+
 ---
 
 ## A1 — Business logic in controller
