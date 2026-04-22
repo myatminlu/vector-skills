@@ -8,21 +8,23 @@ when working on that kind of code.
 
 | Skill | What it does |
 |---|---|
-| [`nestjs-dev-guidelines`](./nestjs-dev-guidelines/) | Senior NestJS / Node.js backend engineer: folder structure, naming, code quality, API design, DB design, security, auth, pagination, error handling, testing, AI product patterns (LLM gateway, SSE, usage metering), code review rules. SKILL.md + 31 granular reference files + evals. |
+| [`nestjs-dev-guidelines`](./skills/nestjs-dev-guidelines/) | Senior NestJS / Node.js backend engineer: folder structure, naming, code quality, API design, DB design, security, auth, pagination, error handling, testing, AI product patterns (LLM gateway, SSE, usage metering), code review rules. SKILL.md + 31 granular reference files + evals. |
 
 (More skills planned — `react-frontend-guidelines`, `expo-mobile-guidelines`, etc.)
 
 ## Install
 
-Skills live in `~/.claude/skills/` so Claude Code auto-discovers them. Clone this repo
-and symlink each skill you want active:
+Via the [`skills`](https://skills.sh) CLI (recommended):
 
 ```bash
-# one-time: clone the library
-git clone <repo-url> <local-path>/vector-skills
+npx skills add myatminlu/vector-skills
+```
 
-# for each skill you want, add a symlink
-ln -s <local-path>/vector-skills/nestjs-dev-guidelines \
+Or manually — skills live in `~/.claude/skills/` so Claude Code auto-discovers them:
+
+```bash
+git clone <repo-url> <local-path>/vector-skills
+ln -s <local-path>/vector-skills/skills/nestjs-dev-guidelines \
       ~/.claude/skills/nestjs-dev-guidelines
 ```
 
@@ -33,7 +35,7 @@ Next Claude Code session will load the skill automatically. No restart or instal
 Edit the files in place. Changes take effect on the next Claude Code session.
 
 ```bash
-cd <local-path>/vector-skills/nestjs-dev-guidelines
+cd <local-path>/vector-skills/skills/nestjs-dev-guidelines
 vim references/08-pagination-filters-sorting.md
 
 # optional structural validation
@@ -46,7 +48,7 @@ git push
 ## Adding a new skill
 
 ```bash
-cd <local-path>/vector-skills
+cd <local-path>/vector-skills/skills
 mkdir my-new-skill
 cd my-new-skill
 # Create SKILL.md (required) + optional references/, evals/, assets/, scripts/
