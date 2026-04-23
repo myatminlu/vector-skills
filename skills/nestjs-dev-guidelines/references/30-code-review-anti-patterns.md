@@ -21,10 +21,14 @@ Jump directly to the anti-pattern relevant to the diff you are reviewing.
 
 **API shape & errors**
 - A4 — Returning `{ success: false }` with HTTP 200
-- A28 — Response envelope per endpoint
+- A28 — Response contract varies per endpoint
 - A29 — Missing `headersSent` guard in global filter
 - A10 — Silent catch
 - A11 — Bare `throw e` or no-op try/catch
+
+**Fix strategy**
+- A36 — Phrase-specific trigger hack instead of root-cause fix
+- A37 — Partial fix that ignores the impact surface
 
 **Auth & security**
 - A6 — Missing auth guard
@@ -34,6 +38,7 @@ Jump directly to the anti-pattern relevant to the diff you are reviewing.
 **Lists & pagination**
 - A7 — Unbounded list endpoint
 - A31 — Unbounded `Promise.all` over user-controlled input
+- A38 — Keyset cursor does not match active sort
 
 **External calls & resilience**
 - A9 — Naked fetch without timeout
@@ -137,7 +142,7 @@ return res.status(200).json({ success: false, error: 'bad' });
 **Good**
 ```ts
 throw new BadRequestException({ code: 'REQUEST.BAD', message: 'Invalid input' });
-// filter renders { error: { code, message, traceId } } with HTTP 400
+// filter renders { code, message, details?, traceId } with HTTP 400
 ```
 
 See `07`, `10`.
@@ -207,7 +212,7 @@ async list() { return this.repo.findAll(); }
 **Good**
 ```ts
 @Get()
-async list(@Query() q: ListPaymentsQueryDto): Promise<Envelope<Payment[]>> {
+async list(@Query() q: ListPaymentsCursorQueryDto): Promise<CursorListResponse<Payment>> {
   const { rows, nextCursor, hasMore } = await this.repo.list(q);
   return { data: rows, meta: { pagination: { nextCursor, hasMore, limit: q.limit } } };
 }
@@ -582,7 +587,7 @@ See `13`, `24`.
 
 ---
 
-## A28 — Response envelope per endpoint
+## A28 — Response contract varies per endpoint
 
 **Bad**
 ```ts
@@ -593,8 +598,8 @@ See `13`, `24`.
 
 **Good**
 ```ts
-// global interceptor envelopes to { data }; controllers return domain objects / arrays
-@Get()  return users;
+@Get(':id')  return PaymentResponseDto.from(payment);
+@Get()       return { data: users, meta: { pagination } };
 ```
 
 See `07`.
@@ -615,7 +620,7 @@ catch(e, host) {
 ```ts
 const res = host.switchToHttp().getResponse();
 if (res.headersSent) return;
-res.status(status).json({ error: ... });
+res.status(status).json({ code, message, details, traceId });
 ```
 
 See `10`, `27`.
@@ -720,6 +725,84 @@ if (dto.name.length < 1) throw new BadRequestException('name required');
 DTO with `@IsEmail`, `@Length(1, 100)` — validation runs in the pipe.
 
 See `09`.
+
+---
+
+## A36 — Phrase-specific trigger hack instead of root-cause fix
+
+**Bad**
+```ts
+if (/ဘာလုပ်စရာရှိလဲ/.test(input)) {
+  return this.listTasks();
+}
+
+if (input.includes('what should I do')) {
+  return this.listTasks();
+}
+```
+
+**Good**
+```ts
+const intent = this.intentResolver.resolve(input, context);
+
+if (intent.kind === 'list-tasks') {
+  return this.listTasks();
+}
+```
+
+Or, if the product is intentionally rule-based, keep the rule explicit, centralized, and fully
+scoped as product behavior rather than a hidden bug patch.
+
+See `00`, `04`.
+
+---
+
+## A37 — Partial fix that ignores the impact surface
+
+**Bad**
+```ts
+// rename one call site only
+await this.payments.createInvoice(dto);
+
+// other services, tests, docs, and examples still reference createBill(...)
+```
+
+**Good**
+```ts
+// update all call sites, tests, docs, and examples in the same change
+await this.payments.createInvoice(dto);
+```
+
+If the shared change affects 17 or 100+ places, search and close the whole set deliberately. The
+size of the impact surface is not a reason to stop early.
+
+See `00`, `29`.
+
+---
+
+## A38 — Keyset cursor does not match active sort
+
+**Bad**
+```ts
+// cursor always encodes { createdAt, id }
+const cursor = decodeCursor(q.cursor);
+
+// but endpoint also allows ?sort=status,-createdAt
+const sorts = parseSort(q.sort);
+```
+
+**Good**
+```ts
+// either keep one fixed keyset-safe sort per endpoint
+ORDER BY created_at DESC, id DESC
+
+// or derive the cursor payload + seek predicate from the active sort tuple
+```
+
+If the endpoint needs fully user-configurable multi-field sorting and page numbers, offset is
+often the simpler and safer choice.
+
+See `08`.
 
 ---
 

@@ -237,15 +237,13 @@ Validation failures throw `BadRequestException`, caught by your global filter an
 
 ```json
 {
-  "error": {
-    "code": "VALIDATION.FAILED",
-    "message": "Request validation failed.",
-    "details": [
-      { "field": "email", "constraints": { "isEmail": "email must be a valid email" } },
-      { "field": "password", "constraints": { "length": "password must be longer than or equal to 12 characters" } }
-    ],
-    "traceId": "req_..."
-  }
+  "code": "VALIDATION.FAILED",
+  "message": "Request validation failed.",
+  "details": [
+    { "field": "email", "constraints": { "isEmail": "email must be a valid email" } },
+    { "field": "password", "constraints": { "length": "password must be longer than or equal to 12 characters" } }
+  ],
+  "traceId": "req_..."
 }
 ```
 
@@ -296,7 +294,7 @@ async create(@Body() body: any): Promise<User> {          // ❌ no DTO
 
 ## See also
 
-- [`10-error-handling.md`](./10-error-handling.md) — mapping validation errors to the envelope
+- [`10-error-handling.md`](./10-error-handling.md) — mapping validation errors to the standard error response body
 - [`20-configuration.md`](./20-configuration.md) — env Zod schema in depth
 - [`25-documentation-swagger.md`](./25-documentation-swagger.md) — `@ApiProperty` + `class-validator` synergy
 - [`26-ai-product-patterns.md`](./26-ai-product-patterns.md) — Zod-parsing LLM output

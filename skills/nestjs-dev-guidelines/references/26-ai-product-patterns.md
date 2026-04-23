@@ -234,7 +234,7 @@ You are a senior editor. Summarize the following text in exactly 5 bullets...
 ### Prompt caching (Anthropic)
 
 When you call the same system prompt many times with different user messages, use Anthropic's
-prompt caching to reuse server-side state (see the `claude-api` skill for details).
+prompt caching to reuse server-side state.
 
 ```ts
 messages: [

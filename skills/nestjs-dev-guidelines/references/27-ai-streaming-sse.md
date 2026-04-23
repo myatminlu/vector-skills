@@ -207,7 +207,7 @@ If the client reads slower than the server writes (big payloads), Node buffers a
 ## Global exception filter interaction
 
 Once you call `res.flushHeaders()` (or `res.write(...)`), the status and headers are locked.
-A thrown exception that reaches the global filter can't switch to JSON envelope — it'd be
+A thrown exception that reaches the global filter can't switch to a JSON error body — it'd be
 invalid HTTP to write a second response.
 
 ```ts
@@ -216,7 +216,7 @@ export class AllExceptionsFilter {
   catch(e: unknown, host: ArgumentsHost) {
     const res = host.switchToHttp().getResponse<Response>();
     if (res.headersSent) return;        // ← CRITICAL for streaming
-    // ... normal envelope for non-streaming responses
+    // ... normal { code, message, details?, traceId } body for non-streaming responses
   }
 }
 ```
@@ -239,7 +239,7 @@ if (!res.writableEnded) {
 ## Rate limit + quota
 
 - Rate limit SSE endpoints same as LLM calls (per user, per model).
-- Reject the SSE start with `429` before flushing headers if over quota — the global filter can still return a JSON envelope at that point.
+- Reject the SSE start with `429` before flushing headers if over quota — the global filter can still return a standard JSON error body at that point.
 
 ## Testing
 
@@ -302,4 +302,4 @@ async stream(@Body() dto, @Res() res) {
 - [`26-ai-product-patterns.md`](./26-ai-product-patterns.md) — gateway that drives the stream
 - [`28-ai-usage-metering-cost.md`](./28-ai-usage-metering-cost.md) — recording usage per stream
 - [`10-error-handling.md`](./10-error-handling.md) — filter behavior
-- [`07-standard-responses.md`](./07-standard-responses.md) — envelope doesn't apply to SSE
+- [`07-standard-responses.md`](./07-standard-responses.md) — standard response contract doesn't apply to SSE events

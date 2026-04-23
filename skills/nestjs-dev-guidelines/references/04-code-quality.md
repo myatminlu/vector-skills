@@ -94,6 +94,110 @@ async create(@Body() dto: CreateUserDto, @Req() req) {
 - **D — Dependency Inversion.** Depend on interfaces (or DI tokens), not concrete classes
   when the impl might change (e.g. payment provider).
 
+### SOLID review questions
+
+Use these when reviewing a class, service, repository, or abstraction:
+
+- **Single Responsibility:** Does this unit have more than one reason to change? Are HTTP,
+  domain, persistence, and integration concerns mixed together?
+- **Open/Closed:** Does the new use case fit by adding a new implementation, or did the diff add
+  branches/flags to force old code to handle a different concept?
+- **Liskov:** Can every implementation honor the same contract, including return shape, errors,
+  side effects, and performance expectations?
+- **Interface Segregation:** Are consumers forced to depend on methods they do not need?
+- **Dependency Inversion:** Does business logic depend on abstractions and DI, or is it tied
+  directly to a provider SDK, ORM detail, or framework singleton?
+
+### SOLID in NestJS practice
+
+- Controllers, services, repositories, guards, interceptors, and jobs each have a distinct job.
+  If one class starts owning two of those jobs, split it.
+- Prefer adding a new injectable strategy/provider over widening one service with booleans,
+  mode strings, or provider-specific branches.
+- Shared interfaces must define behavior, not just method names. If one implementation cannot
+  safely satisfy the same contract, it should not implement that interface.
+- Inject the narrowest dependency that matches the need. Do not pass a god-service or full repo
+  when a smaller abstraction would do.
+- Domain services should not know transport details (`req`, `res`, headers), and controllers
+  should not know persistence details (SQL, ORM query objects).
+
+### Good
+
+```ts
+export interface PaymentGateway {
+  charge(input: ChargeInput): Promise<ChargeResult>;
+}
+
+@Injectable()
+export class StripePaymentGateway implements PaymentGateway {
+  async charge(input: ChargeInput): Promise<ChargeResult> {
+    // Stripe mapping only
+  }
+}
+
+@Injectable()
+export class BillingService {
+  constructor(private readonly gateway: PaymentGateway) {}
+
+  async collectInvoice(input: CollectInvoiceInput): Promise<ChargeResult> {
+    return this.gateway.charge(input);
+  }
+}
+```
+
+### Bad
+
+```ts
+@Injectable()
+export class BillingService {
+  async collectInvoice(input: CollectInvoiceInput, provider: 'stripe' | 'adyen', dryRun = false) {
+    if (provider === 'stripe') {
+      // provider-specific branch
+    }
+
+    if (provider === 'adyen') {
+      // different return behavior
+    }
+
+    if (dryRun) {
+      // third behavior path mixed into same method
+    }
+  }
+}
+```
+
+## Software engineering best practices
+
+These are not separate from NestJS rules; they are the quality bar underneath them.
+
+- **High cohesion, low coupling.** Keep related logic together; avoid changes that require editing
+  distant files in lockstep.
+- **Clear boundaries.** HTTP in controllers, domain in services, persistence in repositories,
+  integration mapping in provider clients.
+- **Encapsulate side effects.** Isolate DB writes, network calls, clock, randomness, and queues so
+  they are easy to test and reason about.
+- **Stable contracts.** Shared helpers and service methods should have predictable names, input
+  shapes, return types, and error behavior.
+- **Prefer composition over flags.** If behavior diverges significantly, add a new collaborator or
+  abstraction instead of boolean/mode parameters.
+- **Keep domain language consistent.** Use one term for one concept across DTOs, services, events,
+  DB columns, and API docs.
+- **Minimize blast radius.** Reuse existing code first, but do not silently change shared behavior
+  if other callers may depend on it.
+- **Make illegal states hard to represent.** Use types, DTO validation, discriminated unions, and
+  small value objects when practical.
+- **Optimize for change, not cleverness.** The next feature should be easy to add without
+  rewriting unrelated code.
+
+### Design smells to flag
+
+- Services with broad names like `Manager`, `Helper`, `Processor`, or `Util` and no clear boundary
+- Methods that branch on many booleans, mode strings, or provider names
+- Interfaces with methods that some implementations cannot support cleanly
+- Domain code importing framework globals or provider SDKs directly
+- The same concept named three different ways across DTOs, DB schema, and service methods
+- A feature that requires copy-pasting changes across multiple modules to stay correct
+
 ## Constructor DI only
 
 ```ts

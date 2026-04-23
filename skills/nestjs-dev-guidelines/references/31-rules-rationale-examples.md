@@ -51,12 +51,12 @@ bad. Use when you want the one-screen answer instead of opening the full referen
 
 ---
 
-## R5 — Response envelope is `{ data, meta, error }`
+## R5 — Response contract is consistent
 
 **Why:** SDK generation, consistent client handling.
 
-✅ `{ "data": { ... } }` or `{ "data": [...], "meta": { "pagination": {...} } }`.
-❌ Per-endpoint shapes: `{ "result": ... }`, `{ "users": [...] }`.
+✅ `{ ... }` for single-resource success, `{ "data": [...], "meta": { "pagination": {...} } }` for list success with pagination metadata that matches the endpoint's cursor or offset model, `{ "code": "X.Y", "message": "...", "details": { ... }, "traceId": "..." }` for errors when details are present.
+❌ Per-endpoint shapes: `{ "result": ... }`, `{ "users": [...] }`, `{ "error": { ... } }`.
 → See `07`.
 
 ---
@@ -73,9 +73,11 @@ bad. Use when you want the one-screen answer instead of opening the full referen
 
 ## R7 — List endpoints paginate
 
-**Why:** unbounded lists OOM the server. Cursor default scales; offset for numbered pages.
+**Why:** unbounded lists OOM the server. Choose cursor/keyset for sequential browsing over mutable
+or large data; choose offset when numbered pages or exact totals are actual product requirements.
 
 ✅ `GET /payments?limit=50&cursor=...` → `{ data, meta: { pagination } }`.
+✅ `GET /admin/users?page=3&limit=50` when page-number UX is genuinely required.
 ❌ `GET /payments` → `[...all of it...]`.
 → See `08`.
 
@@ -333,7 +335,7 @@ bad. Use when you want the one-screen answer instead of opening the full referen
 
 ## R33 — E2E covers happy + one error per endpoint
 
-**Why:** smoke that the HTTP chain works; catch envelope / auth regressions.
+**Why:** smoke that the HTTP chain works; catch response-contract / auth regressions.
 
 ✅ `POST /v1/users` happy path (201) + validation failure (422).
 ❌ 50 e2e tests trying to replace unit tests.

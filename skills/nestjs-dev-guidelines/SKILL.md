@@ -1,6 +1,6 @@
 ---
 name: nestjs-dev-guidelines
-description: 'Production-grade NestJS and Node.js/TypeScript backend standards for writing, reviewing, and evolving code like a senior backend engineer. Use this skill when working on NestJS or Node/TypeScript backends that need strong judgment on architecture, module boundaries, controllers vs services, DTO validation, API design, response envelopes, error handling, auth, database schema, migrations, BullMQ jobs, observability, testing, or AI backend patterns such as LLM gateways, SSE streaming, usage metering, and quotas. Trigger for implementation work, refactors, PR reviews, audits, endpoint design, schema design, and production-readiness checks across files like *.module.ts, *.controller.ts, *.service.ts, DTOs, repositories, migrations, and backend integrations. The skill provides concrete project rules, decision trees, and review checklists that go beyond generic framework knowledge. Do NOT trigger for non-Node backends (Django, Rails, Spring, Go, Laravel, FastAPI) or pure frontend work.'
+description: 'Production-grade NestJS and Node.js/TypeScript backend standards for writing, reviewing, and evolving code like a senior backend engineer. Use this skill when working on NestJS or Node/TypeScript backends that need strong judgment on architecture, module boundaries, controllers vs services, DTO validation, API design, response contracts, error handling, auth, database schema, migrations, BullMQ jobs, observability, testing, or AI backend patterns such as LLM gateways, SSE streaming, usage metering, and quotas. Trigger for implementation work, refactors, PR reviews, audits, endpoint design, schema design, and production-readiness checks across files like *.module.ts, *.controller.ts, *.service.ts, DTOs, repositories, migrations, and backend integrations. The skill provides concrete project rules, decision trees, and review checklists that go beyond generic framework knowledge. Do NOT trigger for non-Node backends (Django, Rails, Spring, Go, Laravel, FastAPI) or pure frontend work.'
 ---
 
 # NestJS Dev Guidelines
@@ -27,13 +27,25 @@ failure modes: silent assumptions, overbuilt code, broad refactors, and unverifi
 
 1. **Think before coding.** State assumptions. If the task is ambiguous, ask or explicitly list
    the plausible interpretations instead of silently picking one.
-2. **Prefer the smallest correct change.** No speculative flags, abstractions, helpers, config,
+2. **Search before writing new code.** Check the current module first, then shared/common/core
+   code for an existing util, DTO, service, guard, interceptor, repository, or pattern you can
+   reuse.
+3. **Fix root causes, not trigger hacks.** Do not patch broad behavior with one-off regexes,
+   hardcoded phrases, or manual if/then rules unless the product requirement is literally
+   deterministic rule-based routing.
+4. **Prefer the smallest correct change.** No speculative flags, abstractions, helpers, config,
    or edge-case handling unless the task or codebase clearly needs them.
-3. **Make surgical edits.** Touch only the lines needed for the request. Do not clean up
+5. **Make surgical edits.** Touch only the lines needed for the request. Do not clean up
    unrelated code, comments, or formatting just because you are nearby.
-4. **Define what success looks like.** Convert vague requests into checks you can verify:
+6. **Search and update the full impact surface.** If a shared function, contract, DTO, type, or
+   behavior changes, scan and update callers, tests, docs, examples, and related flows until the
+   whole change is consistent.
+7. **Ask before changing shared behavior.** If reusing existing code requires changing shared
+   semantics, multiple callers, or a reusable contract, stop and confirm instead of silently
+   widening the blast radius.
+8. **Define what success looks like.** Convert vague requests into checks you can verify:
    regression test, unit test, e2e test, typecheck, lint, build, or a concrete manual check.
-5. **Stop when confused.** Name the uncertainty early. Short clarifying questions are cheaper
+9. **Stop when confused.** Name the uncertainty early. Short clarifying questions are cheaper
    than rewriting the wrong code.
 
 Open `references/00-execution-discipline.md` for the full checklist and examples.
@@ -65,14 +77,16 @@ Each rule has a **Why** so you can reason about edge cases instead of applying i
    *Why:* each ecosystem has a convention; mixing them creates a lifetime of mapping bugs and
    makes ad-hoc SQL painful. Pick the convention of the side that's hardest to change (the DB).
    See `13-database-design.md`.
-6. **Every response is enveloped.** `{ data, meta?, error? }`. Errors always include
-   `{ code, message, traceId }`, plus the correct HTTP status.
-   *Why:* a consistent envelope lets clients write one error handler and one pagination handler
+6. **Responses follow one stable contract.** Single-resource success returns the object itself;
+   list success returns `{ data, meta }`; errors return `{ code, message, details?, traceId }`
+   with the correct HTTP status.
+   *Why:* a consistent contract lets clients write one error handler and one pagination handler
    that works everywhere, and lets support triage issues by `traceId`. See `07`, `10`.
-7. **Pagination is required for any list endpoint.** Cursor-based by default; offset only when
-   the product needs page numbers. Both return `meta` with pagination info.
-   *Why:* an unpaginated list is a latent OOM and a latent DB outage. Cursor is stable under
-   insertion; offset scales badly past a few pages. See `08`.
+7. **Pagination is required for any list endpoint.** Choose cursor/keyset for sequential browsing
+   over mutable or large data; choose offset when page-number navigation or exact totals are real
+   product requirements. Both return `meta` with pagination info.
+   *Why:* an unpaginated list is a latent OOM and a latent DB outage. The right pagination model
+   depends on UX, consistency requirements, and scale. See `08`.
 8. **Secrets come from env only — validated with Zod at boot.** No secrets in code, no secrets
    in logs. Invalid env = crash before serving traffic.
    *Why:* a missing/malformed env var caught at boot is a minor incident; caught at runtime on
@@ -129,8 +143,8 @@ Read the full reference file when you need detail. The number prefix is for stab
 | 04 | `04-code-quality.md` | SOLID, constructor DI, pure utils, small functions, no `any` without a reason |
 | 05 | `05-thinking-decision-trees.md` | How to decide: where to put code, when to refactor, when to skip a test |
 | 06 | `06-api-design.md` | REST, plural nouns, verbs match semantics, URI versioning `/v1/...`, idempotency keys |
-| 07 | `07-standard-responses.md` | `{ data, meta, error }` envelope via interceptor + filter |
-| 08 | `08-pagination-filters-sorting.md` | Cursor default, offset for admin; `filter[field]=`, `sort=-createdAt`; whitelist fields |
+| 07 | `07-standard-responses.md` | Single success returns a plain object; lists return `{ data, meta }`; errors return `{ code, message, details?, traceId }` |
+| 08 | `08-pagination-filters-sorting.md` | Cursor/keyset for sequential browsing, offset when page numbers/exact totals are real requirements; `filter[field]=`, `sort=-createdAt`; whitelist fields |
 | 09 | `09-validation.md` | class-validator DTOs + global ValidationPipe; Zod for env + runtime JSON parsing |
 | 10 | `10-error-handling.md` | Hybrid taxonomy: HTTP status + namespaced code + traceId; domain errors extend `HttpException` |
 | 11 | `11-security.md` | OWASP Top 10, helmet, CORS whitelist, rate limits, PII handling, SQL-injection prevention |

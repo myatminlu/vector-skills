@@ -5,8 +5,8 @@
 - Execution order per request: **Middleware → Guard → Interceptor (pre) → Pipe → Handler → Interceptor (post) → Exception Filter**.
 - **Guard** — answers "is this allowed?" (authN/authZ, throttling). Returns boolean; sync or async.
 - **Pipe** — transforms and validates input (DTO via `ValidationPipe`, `ParseUUIDPipe`, etc.).
-- **Interceptor** — wraps the handler (logging, timing, timeout, caching, response envelope).
-- **Filter** — catches thrown exceptions; shapes into error envelope.
+- **Interceptor** — wraps the handler (logging, timing, timeout, caching, tracing).
+- **Filter** — catches thrown exceptions; shapes into the standard error response body.
 - One per concern. Don't do authZ in a pipe or validation in a guard.
 
 ## The chain (visualized)
@@ -26,11 +26,11 @@ HTTP request
     ↓
 [Handler]                    your @Get / @Post method
     ↓
-[Interceptors — after]       measure timing, wrap response envelope, emit span
+[Interceptors — after]       measure timing, emit span, set caching headers
     ↓
 (response written)
     ↓
-[Exception Filter]           only if something threw; builds error envelope
+[Exception Filter]           only if something threw; builds the error response body
     ↓
 HTTP response
 ```
@@ -120,11 +120,13 @@ Pipes should be **stateless** — rely only on input, not on DB / external.
 ## Interceptors
 
 - Wrap the handler via RxJS. Can transform input, transform output, short-circuit, or observe.
-- Typical: `LoggingInterceptor`, `TimeoutInterceptor`, `ResponseEnvelopeInterceptor`, `CacheInterceptor`, `TracingInterceptor`.
+- Typical: `LoggingInterceptor`, `TimeoutInterceptor`, `CacheInterceptor`, `TracingInterceptor`.
 
-### Response envelope
+### Response body shape
 
-See `07-standard-responses.md`.
+Response bodies are not shaped by a global interceptor in this skill's conventions — the success
+body is chosen in the controller or response DTO, and the error body is produced by the global
+exception filter. See `07-standard-responses.md` and `10-error-handling.md`.
 
 ### Timeout
 
@@ -181,7 +183,7 @@ Good for pure reads, bounded cardinality, safe staleness. Never cache auth decis
 
 ## Exception filters
 
-- Catch thrown exceptions, shape into the envelope.
+- Catch thrown exceptions, shape into the standard error body.
 - `@Catch()` — catch all. `@Catch(HttpException)` — only these.
 - Register global: `app.useGlobalFilters(new AllExceptionsFilter())`.
 - **Must** skip write when `response.headersSent` (streaming, raw Node handlers).
@@ -205,7 +207,6 @@ Prefer class form (DI) for anything that needs services.
 // app.module.ts
 providers: [
   { provide: APP_GUARD, useClass: AuthGuard },
-  { provide: APP_INTERCEPTOR, useClass: ResponseEnvelopeInterceptor },
   { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
   { provide: APP_PIPE, useClass: ValidationPipeWithCustomFactory },
   { provide: APP_FILTER, useClass: AllExceptionsFilter },
@@ -284,15 +285,15 @@ export class OrderController {
 
 - [ ] Guards handle only auth/permission/throttle; no data mutation
 - [ ] Pipes handle only validation/transform; no DB calls
-- [ ] Interceptors are pure (logging, timing, envelope); no auth decisions
-- [ ] Filter catches all; envelopes errors; skips on `headersSent`
+- [ ] Interceptors are pure (logging, timing, tracing, caching); no auth decisions and no response-body shaping
+- [ ] Filter catches all; shapes errors into `{ code, message, details?, traceId }`; skips on `headersSent`
 - [ ] Global components registered via `APP_*` tokens for DI
 - [ ] Order of multiple guards / interceptors is intentional
 - [ ] No middleware does what a guard/interceptor should do
 
 ## See also
 
-- [`07-standard-responses.md`](./07-standard-responses.md) — response envelope interceptor
+- [`07-standard-responses.md`](./07-standard-responses.md) — response contract
 - [`09-validation.md`](./09-validation.md) — ValidationPipe
 - [`10-error-handling.md`](./10-error-handling.md) — AllExceptionsFilter
 - [`12-authentication-patterns.md`](./12-authentication-patterns.md) — AuthGuard

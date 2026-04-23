@@ -2,39 +2,67 @@
 
 ## TL;DR
 
-- Every response is enveloped: `{ data, meta?, error? }`.
-- Success: `{ data: ..., meta?: ... }`. No `error`.
-- Failure: `{ error: { code, message, details?, traceId } }`. No `data`.
-- Envelope is applied by a global **interceptor** (for success) and a global **exception filter** (for failures).
-- The envelope is the same on v1 and v2 unless you are deliberately breaking the contract.
+- Single-resource success returns the object itself. No outer `data` wrapper.
+- List success returns `{ data: [...], meta: { pagination, ... } }`.
+- `meta.pagination` depends on the endpoint's pagination model.
+- Cursor/keyset lists use `{ nextCursor, hasMore, limit }`.
+- Offset lists use `{ page, limit, total, totalPages }`.
+- Failure returns `{ code, message, details?, traceId }`. No outer `error` wrapper.
+- Success shape is chosen in the controller/response DTO. Errors are shaped by a global **exception filter**.
+- Keep this response contract stable across versions unless you are deliberately breaking it.
 
 ## Why it matters
 
-A predictable envelope makes SDK generation easy, client error handling one path, and log
-analysis machine-parseable. Without one, every team invents its own and every client ships
-bugs at integration.
+A predictable response contract makes SDK generation easy, client error handling one path, and log
+analysis machine-parseable. Without one, every team invents its own and every client ships bugs at
+integration.
 
-## The envelope
+## The response contract
 
 ### Success
 
 ```json
 {
-  "data": { "id": "pay_abc", "amount": 1000, "currency": "usd", "status": "pending" }
+  "id": "pay_abc",
+  "amount": 1000,
+  "currency": "usd",
+  "status": "pending"
 }
 ```
 
-### Success — list
+### Success — list (cursor/keyset)
 
 ```json
 {
   "data": [
-    { "id": "pay_1", ... },
-    { "id": "pay_2", ... }
+    { "id": "pay_1", "amount": 1000 },
+    { "id": "pay_2", "amount": 2500 }
   ],
   "meta": {
-    "pagination": { "nextCursor": "eyJp...", "hasMore": true, "limit": 50 },
-    "total": 172        // optional, only if the endpoint supports total counting
+    "pagination": {
+      "nextCursor": "eyJp...",
+      "hasMore": true,
+      "limit": 50
+    }
+  }
+}
+```
+
+### Success — list (offset)
+
+```json
+{
+  "data": [
+    { "id": "user_101", "email": "a@example.com" },
+    { "id": "user_102", "email": "b@example.com" }
+  ],
+  "meta": {
+    "pagination": {
+      "page": 3,
+      "limit": 50,
+      "total": 1274,
+      "totalPages": 26
+    }
   }
 }
 ```
@@ -43,12 +71,10 @@ bugs at integration.
 
 ```json
 {
-  "error": {
-    "code": "PAYMENT.INSUFFICIENT_FUNDS",
-    "message": "The card was declined due to insufficient funds.",
-    "details": { "declineCode": "insufficient_funds" },
-    "traceId": "req_7a2c9f..."
-  }
+  "code": "PAYMENT.INSUFFICIENT_FUNDS",
+  "message": "The card was declined due to insufficient funds.",
+  "details": { "declineCode": "insufficient_funds" },
+  "traceId": "req_7a2c9f..."
 }
 ```
 
@@ -57,45 +83,26 @@ bugs at integration.
 - `details` — optional machine-readable context. Safe to log; never include PII / secrets.
 - `traceId` — matches `X-Request-ID`. Always present so support can correlate.
 
-HTTP status code is the primary error signal (`4xx`/`5xx`). The envelope adds granularity.
+HTTP status code is the primary error signal (`4xx`/`5xx`). The body adds granularity.
+
+## Pagination metadata
+
+- Cursor/keyset endpoint → `meta.pagination = { nextCursor, hasMore, limit }`
+- Offset endpoint → `meta.pagination = { page, limit, total, totalPages }`
+- Top-level list shape stays the same (`{ data, meta }`); only the `pagination` object changes.
+- Do not mix cursor fields and offset fields in the same endpoint contract.
+- Cursor endpoints usually omit `total` unless the product truly needs it and the cost was measured.
 
 ## Implementation
 
-### Interceptor for success
+### Success responses
 
-```ts
-// common/interceptors/response-envelope.interceptor.ts
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
-import { map, Observable } from 'rxjs';
+Return the wire shape directly from the controller or response DTO:
 
-export interface Envelope<T> {
-  data: T;
-  meta?: Record<string, unknown>;
-}
-
-@Injectable()
-export class ResponseEnvelopeInterceptor implements NestInterceptor {
-  intercept(_ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
-    return next.handle().pipe(
-      map((body) => {
-        // If the handler already returned an envelope (e.g. { data, meta }), pass through.
-        if (body && typeof body === 'object' && ('data' in body || 'error' in body)) {
-          return body;
-        }
-        return { data: body };
-      }),
-    );
-  }
-}
-
-// main.ts
-app.useGlobalInterceptors(new ResponseEnvelopeInterceptor());
-```
-
-**Service/controller returns:**
-- A plain object or array → interceptor wraps it in `{ data }`.
-- Already-enveloped `{ data, meta }` (for list endpoints) → passed through.
-- `undefined` / `null` → `{ data: null }` (or return `204 No Content` from the controller).
+- Single resource / action result → plain object
+- Cursor list endpoint → `{ data, meta: { pagination: { nextCursor, hasMore, limit } } }`
+- Offset list endpoint → `{ data, meta: { pagination: { page, limit, total, totalPages } } }`
+- No content → `204 No Content` where appropriate
 
 ### Exception filter for errors
 
@@ -112,23 +119,46 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (res.headersSent) return; // e.g. Better Auth wrote already
 
     const { status, code, message, details } = toApiError(exception);
+    const requestId =
+      typeof (req as any).id === 'string' && (req as any).id.trim().length > 0
+        ? (req as any).id.trim()
+        : undefined;
+    const incomingRequestId = req.headers['x-request-id'];
+    const normalizedRequestId =
+      typeof incomingRequestId === 'string' &&
+      incomingRequestId.trim().length > 0 &&
+      incomingRequestId.length < 128
+        ? incomingRequestId.trim()
+        : undefined;
+    const traceId = requestId ?? normalizedRequestId ?? `req_${randomUUID()}`;
+    res.setHeader('X-Request-ID', traceId);
+
     res.status(status).json({
-      error: { code, message, details, traceId: req.id ?? req.headers['x-request-id'] },
+      code,
+      message,
+      details,
+      traceId,
     });
   }
 }
 ```
 
+If your request pipeline already guarantees `req.id` (for example via `nestjs-pino` `genReqId`,
+see `21-logging.md`), reuse it. Otherwise accept only a bounded string `X-Request-ID`; ignore
+empty, array-valued, or oversized values, mint a fallback, and echo the final id in
+`X-Request-ID` so the header and body stay aligned.
+
 ## Content types other than JSON
 
-- **SSE (text/event-stream)** — do not envelope individual events. Envelope the **terminal**
-  error frame instead. See `27-ai-streaming-sse.md`.
-- **Binary / file download** — no envelope. Status code + Content-Type + Content-Disposition.
-- **Health check** — `200 {"status":"ok"}` is fine; simple. Don't envelope health.
+- **SSE (text/event-stream)** — do not wrap individual events. Emit a terminal error event in the
+  stream-specific shape. See `27-ai-streaming-sse.md`.
+- **Binary / file download** — no wrapper. Status code + Content-Type + Content-Disposition.
+- **Health check** — `200 {"status":"ok"}` is fine; keep it simple.
 
 ## When a list endpoint must return nothing
 
-- Empty list: `{ "data": [], "meta": { "pagination": { ..., "hasMore": false } } }`.
+- Empty cursor page: `{ "data": [], "meta": { "pagination": { "nextCursor": null, "hasMore": false, "limit": 50 } } }`
+- Empty offset page: `{ "data": [], "meta": { "pagination": { "page": 27, "limit": 50, "total": 1274, "totalPages": 26 } } }`
 - Not `{ "data": null }`. Clients iterate `.data` safely when it's always an array.
 
 ## Localization
@@ -138,33 +168,81 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
 ## Controller return shape — recommended
 
-Two options, both fine (pick one per team and stick):
+Three patterns, all valid:
 
-### A. Return plain domain objects; interceptor envelopes
+### A. Return plain response DTOs for single-resource endpoints
 
 ```ts
 @Get(':id')
-async get(@Param('id') id: string): Promise<Payment> {
-  return this.payments.findById(id); // { id, amount, ... }
+async get(@Param('id') id: string): Promise<PaymentResponseDto> {
+  const payment = await this.payments.findById(id);
+  return PaymentResponseDto.from(payment);
 }
 ```
 
-Response: `{ "data": { "id": "...", "amount": ... } }` (interceptor wraps).
+Response: `{ "id": "...", "amount": ..., "status": "..." }`.
 
-### B. Controller returns envelope explicitly (for list endpoints)
+### B. Cursor list endpoints return `{ data, meta }` with cursor metadata
 
 ```ts
+export interface CursorPaginationMeta {
+  nextCursor: string | null;
+  hasMore: boolean;
+  limit: number;
+}
+
+export interface CursorListResponse<T> {
+  data: T[];
+  meta: {
+    pagination: CursorPaginationMeta;
+  };
+}
+
 @Get()
-async list(@Query() q: ListPaymentsQueryDto): Promise<Envelope<Payment[]>> {
+async list(@Query() q: ListPaymentsCursorQueryDto): Promise<CursorListResponse<PaymentResponseDto>> {
   const { rows, nextCursor, hasMore } = await this.payments.list(q);
   return {
-    data: rows,
+    data: rows.map(PaymentResponseDto.from),
     meta: { pagination: { nextCursor, hasMore, limit: q.limit } },
   };
 }
 ```
 
-Pattern: non-list endpoints use A; list endpoints use B (to include pagination meta).
+### C. Offset list endpoints return `{ data, meta }` with offset metadata
+
+```ts
+export interface OffsetPaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface OffsetListResponse<T> {
+  data: T[];
+  meta: {
+    pagination: OffsetPaginationMeta;
+  };
+}
+
+@Get('/admin/users')
+async listUsers(@Query() q: ListUsersOffsetQueryDto): Promise<OffsetListResponse<UserResponseDto>> {
+  const { rows, total } = await this.users.list(q);
+  return {
+    data: rows.map(UserResponseDto.from),
+    meta: {
+      pagination: {
+        page: q.page,
+        limit: q.limit,
+        total,
+        totalPages: Math.ceil(total / q.limit),
+      },
+    },
+  };
+}
+```
+
+Pattern: single-resource endpoints return the object itself; list endpoints return `{ data, meta }`; `meta.pagination` matches the endpoint's chosen pagination model.
 
 ## Response DTOs
 
@@ -186,23 +264,17 @@ export class PaymentResponseDto {
     };
   }
 }
-
-// controller
-@Get(':id')
-@ApiResponse({ status: 200, type: PaymentResponseDto })
-async get(@Param('id') id: string) {
-  const p = await this.payments.findById(id);
-  return PaymentResponseDto.from(p);
-}
 ```
 
 The `from()` mapper is the only place where domain → wire shape happens. Keeps entities from
 leaking into JSON by accident.
 
-## Versioning the envelope
+## Versioning the response contract
 
-- v1 envelope is `{ data, meta, error }`. Don't change this in v2 without a compelling reason.
-- Per-endpoint response shape can evolve independently inside `data`.
+- v1 uses: plain object for single success, `{ data, meta }` for lists, and `{ code, message, details?, traceId }` for errors.
+- Do not change those top-level shapes in v2 without a compelling reason.
+- Once an endpoint publishes cursor vs offset pagination metadata, keep that endpoint's pagination contract stable unless you version the change.
+- Per-endpoint fields can evolve inside the success object or inside list `data` items.
 
 ## Good vs bad
 
@@ -213,7 +285,7 @@ GET /v1/payments/pay_abc
 
 HTTP/1.1 200
 Content-Type: application/json
-{ "data": { "id": "pay_abc", "amountCents": 1000, "status": "paid" } }
+{ "id": "pay_abc", "amountCents": 1000, "status": "paid" }
 ```
 
 ### Bad
@@ -225,24 +297,25 @@ HTTP/1.1 200
 { "success": true, "result": { "ID": "pay_abc", "amount": 10.00 }, "error": null }
 ```
 
-Issues: non-standard envelope, inconsistent case, float amount, always-`null` field.
+Issues: non-standard shape, inconsistent case, float amount, always-`null` field.
 
 ## Anti-patterns
 
-- Returning `null` from a 404 endpoint instead of throwing (`NotFoundException`) — the filter envelope handles it.
+- Returning `null` from a 404 endpoint instead of throwing (`NotFoundException`) — the filter shapes the error body.
 - Returning `{ success: false }` with HTTP 200.
-- Embedding `error` in a success envelope "just in case" — it's either success or error.
+- Embedding `error` in a success body "just in case" — it's either success or error.
+- Mixing cursor metadata and offset metadata in one endpoint contract.
 - Serializing DB rows with internal columns leaked (e.g. `passwordHash`, `deletedAt`). Use a mapper or `@Exclude()`.
 - Dates as unix timestamps or custom formats. ISO 8601 UTC.
 
 ## Code review checklist
 
-- [ ] Global `ResponseEnvelopeInterceptor` is registered
 - [ ] Global `AllExceptionsFilter` is registered
-- [ ] Successful responses are `{ data }` or `{ data, meta }`
-- [ ] Error responses are `{ error: { code, message, details?, traceId } }`
+- [ ] Single-resource success responses return the object itself
+- [ ] List responses use `{ data, meta }`
+- [ ] `meta.pagination` matches the endpoint's chosen pagination model
+- [ ] Error responses are `{ code, message, details?, traceId }`
 - [ ] HTTP status codes are correct (never `200` for errors)
-- [ ] List endpoints include `meta.pagination`
 - [ ] Dates are ISO 8601 UTC strings
 - [ ] Money is integer minor units or string decimals — never floats
 - [ ] No DB internals leaked (password hashes, soft-delete timestamps) in `data`
@@ -250,7 +323,7 @@ Issues: non-standard envelope, inconsistent case, float amount, always-`null` fi
 ## See also
 
 - [`06-api-design.md`](./06-api-design.md) — URL, verbs, status codes
-- [`08-pagination-filters-sorting.md`](./08-pagination-filters-sorting.md) — list `meta`
+- [`08-pagination-filters-sorting.md`](./08-pagination-filters-sorting.md) — choosing cursor vs offset
 - [`10-error-handling.md`](./10-error-handling.md) — error shape, code taxonomy
 - [`21-logging.md`](./21-logging.md) — correlation IDs for `traceId`
 - [`25-documentation-swagger.md`](./25-documentation-swagger.md) — documenting response shape

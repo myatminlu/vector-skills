@@ -3,9 +3,11 @@
 ## TL;DR
 
 - Every list endpoint paginates. No exceptions. Default `limit=20`, max `limit=100`.
-- **Cursor-based** by default (feeds, infinite scroll, scale). **Offset-based** only when the product needs numbered pages (admin, reports).
+- Choose pagination by navigation semantics, consistency needs, and data shape — not by endpoint label.
+- **Cursor/keyset** is usually right for sequential browsing over large or frequently changing data.
+- **Offset** is right when the UX truly needs page-number navigation, random access, or exact totals.
 - Filters: `?filter[field]=value` with a **whitelist** of allowed fields.
-- Sorts: `?sort=field` (asc) or `?sort=-field` (desc). Whitelist allowed fields.
+- When sort is user-configurable, use `?sort=field` (asc) or `?sort=-field` (desc). Whitelist allowed fields.
 - Shape under `data` is always an array; `meta.pagination` carries navigation.
 
 ## Why it matters
@@ -14,25 +16,65 @@ Unpaginated list endpoints OOM the server the first time a table grows past ~10k
 Unwhitelisted filters are a SQL injection vector and an accidental index-miss disaster.
 Inconsistent pagination shapes break every client.
 
-## Cursor vs offset — which when?
+## Cursor vs offset — how to choose
 
-### Cursor (default)
+Do not choose by endpoint category alone (`admin`, `feed`, `catalog`, `report`). Choose by the
+actual requirements and constraints of the endpoint.
 
-- Scales: O(log n) per page regardless of depth.
-- Safe under concurrent inserts (no duplicate/skip).
-- Only "next" / "prev" navigation — **cannot jump to page N**.
-- Use for: feeds, conversation messages, activity logs, infinite scroll, API exports.
+### Start with these questions
+
+1. Does the UX truly need page-number navigation or jump-to-page behavior?
+2. Does the client need an exact `total` / `totalPages`, or is `hasMore` enough?
+3. Is the user browsing sequentially, or jumping around arbitrarily?
+4. Is the data large, hot, or changing while the user paginates?
+5. Do you have a stable, unique sort key (or tuple) that can anchor keyset pagination?
+6. Is this an interactive list, or should it really be an async export / report job instead?
+
+### Prefer cursor/keyset when
+
+- Navigation is sequential (`next` / `prev`, infinite scroll, "load more").
+- The list is large or can become large.
+- Inserts/deletes happen while the user is paging.
+- Deep pagination is expected.
+- You can define a stable, unique ordering such as `(created_at DESC, id DESC)`.
+
+### Prefer offset when
+
+- The UX genuinely needs page numbers or jump-to-page.
+- Exact `total` / `totalPages` matters to the product.
+- Browsing depth is expected to stay shallow.
+- The list is relatively stable while users page through it.
+- The cost of `OFFSET` + `COUNT(*)` is acceptable on representative data.
+
+### Prefer neither when
+
+- The user wants a full export or large report: use an async job, file export, or streaming.
+- The backend is a search engine with its own pagination model: use the engine-native approach
+  (`search_after`, cursor token, etc.) rather than forcing SQL-style rules onto it.
+
+### Rule of thumb
+
+Cursor/keyset is the safer default for sequential browsing over mutable or large datasets. Offset
+is the right choice when page numbers, random access, or exact totals are real requirements and
+the depth/performance tradeoff is acceptable.
+
+## What the database is doing
 
 ### Offset
 
-- Slow at depth: O(skip) rows scanned.
-- Can jump to arbitrary page.
-- Shows `total` count naturally (at cost of another query).
-- Use for: admin tables, reports, search results with page numbers.
+- Database work grows with depth: the engine still walks past skipped rows before returning the
+  requested page.
+- Exact totals usually require a separate `COUNT(*)` query.
+- Deep offsets get slower as data grows, even when the page size stays small.
 
-**Rule:** default cursor. Add offset only when the product literally needs page N.
+### Cursor/keyset
 
-## Cursor — implementation
+- Database uses the index to seek to the next slice based on the last seen sort key.
+- Work is roughly `index seek + next page`, not "scan all skipped pages first".
+- More stable under concurrent inserts/deletes, as long as the ordering is stable and unique.
+- Not magic: if the sort key itself changes between requests, you can still get confusing results.
+
+## Cursor / keyset — implementation
 
 ### Contract
 
@@ -43,6 +85,8 @@ GET /v1/messages?limit=50&cursor=eyJpZCI6...
 - `limit` — int, 1..100, default 20.
 - `cursor` — opaque base64 string (clients must treat it as a black box).
 - Sort is implicit and stable. For most lists, this is `(created_at DESC, id DESC)`.
+- The ordering must be stable and unique. Use a tie-breaker (`id`) when the primary sort key is
+  not unique.
 
 Response:
 
@@ -64,7 +108,8 @@ Response:
 
 ### Cursor encoding
 
-A cursor is `base64url(JSON.stringify({ id, createdAt }))` — the keys used by the stable sort.
+A cursor is usually `base64url(JSON.stringify({ id, createdAt }))` — the keys used by the stable
+sort. The exact encoding is an implementation detail; clients must treat it as opaque.
 
 ```ts
 interface CursorPayload { id: string; createdAt: string; }
@@ -130,6 +175,7 @@ GET /v1/admin/users?page=3&limit=50
 
 - `page` — int, starts at 1.
 - `limit` — int, 1..100, default 20.
+- Offset is appropriate only when page-number navigation is an actual product requirement.
 
 Response:
 
@@ -155,6 +201,9 @@ SELECT COUNT(*) FROM users WHERE deleted_at IS NULL AND ...;
 ```
 
 Always add `ORDER BY` — offset without ORDER BY returns rows in undefined order.
+
+If the list is large or high-write, benchmark this query shape at realistic depth before adopting
+offset as the contract.
 
 ### Offset DTO
 
@@ -190,7 +239,7 @@ export class OffsetPaginationQueryDto {
 Never trust the client to pick which columns are filterable. Whitelist via DTO:
 
 ```ts
-export class ListPaymentsQueryDto extends CursorPaginationQueryDto {
+export class ListPaymentsCursorQueryDto extends CursorPaginationQueryDto {
   @ApiPropertyOptional({ enum: PaymentStatus })
   @IsOptional() @IsEnum(PaymentStatus)
   status?: PaymentStatus;
@@ -227,9 +276,29 @@ const sql = `SELECT ... WHERE ${where.join(' AND ')} ORDER BY created_at DESC, i
 params.push(q.limit + 1);
 ```
 
+This example assumes a cursor endpoint with a fixed keyset-safe ordering: `created_at DESC, id DESC`.
+
 Always use parameterized placeholders. Never string-concatenate user input into SQL.
 
 ## Sorting
+
+### Cursor/keyset sorting
+
+For keyset pagination, the safest design is a fixed sort per endpoint.
+
+- Good: one stable ordering such as `created_at DESC, id DESC`
+- Acceptable: a small, explicit set of keyset-safe sorts
+- Risky: fully user-configurable multi-field sort without changing the cursor payload and seek predicate
+
+If a cursor endpoint supports configurable sort, the cursor must encode the active sort tuple plus
+a unique tie-breaker, and the `WHERE (...) < (...)` predicate must match that exact tuple.
+
+If that sounds too complex for the endpoint, use offset instead.
+
+### Offset sorting
+
+Offset pagination is usually the simpler choice when the user really needs flexible, user-driven
+sort fields together with page numbers.
 
 ### URL
 
@@ -244,7 +313,7 @@ Always use parameterized placeholders. Never string-concatenate user input into 
 const allowedSortFields = ['createdAt', 'amount', 'status'] as const;
 type AllowedSortField = typeof allowedSortFields[number];
 
-export class ListPaymentsQueryDto extends CursorPaginationQueryDto {
+export class AdminListPaymentsOffsetQueryDto extends OffsetPaginationQueryDto {
   @ApiPropertyOptional({ description: 'Sort field, prefix with - for desc' })
   @IsOptional() @IsString()
   sort?: string;
@@ -269,10 +338,12 @@ and arbitrary fields cause full table scans.
 
 ## Combined: filter + sort + paginate
 
+### Cursor endpoint with fixed sort
+
 ```ts
 @Get()
 @ApiOperation({ summary: 'List payments' })
-async list(@Query() q: ListPaymentsQueryDto): Promise<Envelope<Payment[]>> {
+async list(@Query() q: ListPaymentsCursorQueryDto): Promise<CursorListResponse<Payment>> {
   const { rows, nextCursor, hasMore } = await this.payments.list(q);
   return {
     data: rows,
@@ -283,13 +354,35 @@ async list(@Query() q: ListPaymentsQueryDto): Promise<Envelope<Payment[]>> {
 }
 ```
 
+### Offset endpoint with flexible sort
+
+```ts
+@Get('/admin/payments')
+@ApiOperation({ summary: 'Admin list payments' })
+async adminList(@Query() q: AdminListPaymentsOffsetQueryDto): Promise<OffsetListResponse<Payment>> {
+  const { rows, total } = await this.payments.adminList(q);
+  return {
+    data: rows,
+    meta: {
+      pagination: {
+        page: q.page,
+        limit: q.limit,
+        total,
+        totalPages: Math.ceil(total / q.limit),
+      },
+    },
+  };
+}
+```
+
 ## Indexes
 
-Any filterable field needs an index. Cursor sort key needs a composite index:
+Any filterable field needs an index. Cursor sort keys need composite indexes that match the seek
+tuple exactly:
 
 ```sql
 CREATE INDEX idx_messages_conv_created ON messages (conversation_id, created_at DESC, id DESC);
-CREATE INDEX idx_payments_user_status_created ON payments (user_id, status, created_at DESC);
+CREATE INDEX idx_payments_user_status_created ON payments (user_id, status, created_at DESC, id DESC);
 ```
 
 Rule: any `WHERE` + `ORDER BY` combination that's in a DTO must have a matching index. Measure
@@ -297,18 +390,21 @@ with `EXPLAIN ANALYZE` on representative data. See `13-database-design.md`.
 
 ## Edge cases
 
-- **Empty page:** `data: []`, `meta.pagination.hasMore: false`.
+- **Empty cursor page:** `data: []`, `meta.pagination = { nextCursor: null, hasMore: false, limit }`.
+- **Empty offset page:** `data: []`, `meta.pagination = { page, limit, total, totalPages }`.
 - **Cursor pointing past the end:** treat as empty page; don't 404.
 - **Cursor for a deleted row:** tuple comparison still works (other rows are before/after regardless).
 - **Changing sort between pages:** don't. Cursor is only valid for the sort it was issued with. Document this.
 - **Backward pagination (prev):** harder; use a separate `prevCursor` if really needed. Most apps only need forward.
+- **Exact totals on cursor endpoints:** usually omit them. If the product truly needs totals, measure the extra query cost and justify it.
+- **Large reports/exports:** avoid pretending they are normal paginated browsing if users really need a complete downloadable result.
 
 ## Good vs bad
 
 ### Good
 
 ```
-GET /v1/payments?filter[status]=paid&sort=-createdAt&limit=50
+GET /v1/payments?filter[status]=paid&limit=50
 
 { "data": [...],
   "meta": { "pagination": { "nextCursor": "eyJ...", "hasMore": true, "limit": 50 } } }
@@ -322,8 +418,8 @@ GET /v1/payments?status=paid&sortBy=createdAt DESC&page=50
 { "results": [...], "total": 1000, "currentPage": 50 }
 ```
 
-Issues: no filter namespacing, sort format passes SQL fragment, custom envelope, offset on what
-should be cursor, no limit bound.
+Issues: no filter namespacing, sort format passes SQL fragment, custom response contract, offset
+used without proving page-number UX is needed, no limit bound.
 
 ## Anti-patterns
 
@@ -333,12 +429,17 @@ should be cursor, no limit bound.
 - `ORDER BY` on user-supplied column without whitelist.
 - `total` count on cursor endpoints — expensive; unnecessary; omit.
 - Breaking cursors on schema change without a migration plan.
-- Offset on a feed (slow and buggy under writes).
+- Cursor payload and seek predicate not matching the active sort tuple.
+- Offset on a high-write sequential list where users do not need page numbers.
+- Choosing pagination style by endpoint stereotype (`admin`, `catalog`, `feed`) instead of real requirements.
 
 ## Code review checklist
 
 - [ ] All list endpoints paginate; default + max limit enforced
-- [ ] Cursor-based unless admin/report feature explicitly needs offset
+- [ ] Pagination choice is justified by UX + consistency + scale requirements, not endpoint label alone
+- [ ] Cursor/keyset lists have a stable unique sort key (with tie-breaker where needed)
+- [ ] If cursor/keyset sorting is configurable, cursor payload, seek predicate, and index all match the active sort tuple
+- [ ] Offset endpoints really need page-number/random-access UX, and the query cost is acceptable at realistic depth
 - [ ] Filters whitelisted via DTO with `@IsEnum`, `@IsDateString`, etc.
 - [ ] Sort fields whitelisted; direction parsed safely
 - [ ] Composite indexes exist for the sort + common filters
@@ -348,6 +449,6 @@ should be cursor, no limit bound.
 ## See also
 
 - [`06-api-design.md`](./06-api-design.md) — list endpoint URLs
-- [`07-standard-responses.md`](./07-standard-responses.md) — envelope shape
+- [`07-standard-responses.md`](./07-standard-responses.md) — response contract
 - [`13-database-design.md`](./13-database-design.md) — indexes
 - [`09-validation.md`](./09-validation.md) — DTO setup

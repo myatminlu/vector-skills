@@ -5,7 +5,7 @@
 - Hybrid error taxonomy: **HTTP status** + **namespaced code** + **trace ID**.
 - Throw early. Catch only when you can meaningfully recover. Never swallow.
 - Domain errors extend `HttpException` (or a shared base class) and carry a stable `code`.
-- A single global `AllExceptionsFilter` shapes every error into the standard envelope.
+- A single global `AllExceptionsFilter` shapes every error into the standard error body.
 - The filter **must** skip writing when `response.headersSent` (streaming, file download, raw handlers).
 - Log 5xx with stack. Don't log 4xx unless debugging a client (they're expected).
 
@@ -102,6 +102,7 @@ The class name becomes self-documenting and the error code is guaranteed consist
 
 ```ts
 // common/filters/all-exceptions.filter.ts
+import { randomUUID } from 'crypto';
 import {
   ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger,
 } from '@nestjs/common';
@@ -114,6 +115,21 @@ interface NormalizedError {
   details?: unknown;
 }
 
+function getOrCreateTraceId(req: Request): string {
+  const requestId =
+    typeof (req as any).id === 'string' && (req as any).id.trim().length > 0
+      ? (req as any).id.trim()
+      : undefined;
+  const incomingRequestId = req.headers['x-request-id'];
+  const normalizedRequestId =
+    typeof incomingRequestId === 'string' &&
+    incomingRequestId.trim().length > 0 &&
+    incomingRequestId.length < 128
+      ? incomingRequestId.trim()
+      : undefined;
+  return requestId ?? normalizedRequestId ?? `req_${randomUUID()}`;
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
@@ -124,11 +140,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const req = ctx.getRequest<Request>();
 
     // Critical: if downstream already wrote (streaming, raw node handlers),
-    // do not attempt to write a JSON envelope.
+    // do not attempt to write a JSON error body.
     if (res.headersSent) return;
 
     const err = this.normalize(exception);
-    const traceId = (req as any).id ?? req.headers['x-request-id'] ?? undefined;
+    const traceId = getOrCreateTraceId(req);
+    res.setHeader('X-Request-ID', traceId);
 
     if (err.status >= 500) {
       this.logger.error(
@@ -138,7 +155,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     res.status(err.status).json({
-      error: { code: err.code, message: err.message, details: err.details, traceId },
+      code: err.code,
+      message: err.message,
+      details: err.details,
+      traceId,
     });
   }
 
@@ -216,6 +236,10 @@ try {
   return await this.db.find(key);
 }
 ```
+
+Never omit `traceId` from an error response. If upstream middleware/logger already generated a
+request id, reuse it; otherwise accept only a bounded string `X-Request-ID`, ignore empty,
+array-valued, or oversized values, mint a fallback, and echo the final id via `X-Request-ID`.
 
 ### Don't rethrow without context (if you catch)
 
@@ -342,7 +366,7 @@ async charge(userId: string, amountCents: number): Promise<any> {
 
 ## See also
 
-- [`07-standard-responses.md`](./07-standard-responses.md) — envelope for errors
+- [`07-standard-responses.md`](./07-standard-responses.md) — standard error response body
 - [`21-logging.md`](./21-logging.md) — structured logging + correlation
 - [`11-security.md`](./11-security.md) — what to never leak in errors
 - [`17-pipelines-interceptors-guards.md`](./17-pipelines-interceptors-guards.md) — where the filter sits

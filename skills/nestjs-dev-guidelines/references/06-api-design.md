@@ -124,15 +124,18 @@ TTL: 24h typical.
 | `Idempotency-Key: <uuid>` | Deduplicate POST |
 | `If-Match: <etag>` | Optimistic concurrency |
 | `Accept-Language: <lang>` | I18n |
-| `X-Request-ID: <uuid>` | Correlation (server fills if missing, echoes back) |
+| `X-Request-ID: <request-id>` | Correlation (opaque request id; server validates it, generates one if missing/invalid, echoes back the final value) |
 | `Retry-After: <seconds>` | 429 / 503 hint |
 
 ## List, filter, sort, paginate
 
-Every collection endpoint supports:
+Collection endpoints should follow one consistent filtering/sorting/pagination contract. Some
+endpoints expose user-configurable `sort`; others keep sort fixed for keyset pagination.
+
+Example:
 
 ```
-GET /v1/payments?filter[status]=paid&filter[createdAfter]=2026-01-01&sort=-createdAt&limit=50&cursor=...
+GET /v1/payments?filter[status]=paid&filter[createdAfter]=2026-01-01&limit=50&cursor=...
 ```
 
 See `08-pagination-filters-sorting.md`.
@@ -143,7 +146,7 @@ See `08-pagination-filters-sorting.md`.
 - Async if > 200ms or external: `202 Accepted` with a `jobId` in the body and a polling endpoint or webhook.
 
 ```json
-{ "data": { "jobId": "job_7a2c...", "status": "queued", "pollUrl": "/v1/jobs/job_7a2c..." } }
+{ "jobId": "job_7a2c...", "status": "queued", "pollUrl": "/v1/jobs/job_7a2c..." }
 ```
 
 ## Webhooks (outbound)
@@ -185,7 +188,7 @@ Content-Type: application/json
 HTTP/1.1 201 Created
 Location: /v1/payments/pay_abc
 X-Request-ID: req_xyz
-{ "data": { "id": "pay_abc", "status": "pending", "amount": 1000, ... } }
+{ "id": "pay_abc", "status": "pending", "amount": 1000, ... }
 ```
 
 ### Bad
@@ -222,12 +225,12 @@ Issues: verb in URL, abbreviated key, float amount, wrong HTTP status, ad-hoc er
 - [ ] JSON keys `camelCase`, dates ISO 8601, money as ints or string decimals
 - [ ] Pagination on all list endpoints (`08`)
 - [ ] Request body validated via DTO (`09`)
-- [ ] Response uses standard envelope (`07`)
+- [ ] Response follows the standard contract from `07`
 - [ ] Errors follow error taxonomy (`10`)
 
 ## See also
 
-- [`07-standard-responses.md`](./07-standard-responses.md) — envelope
+- [`07-standard-responses.md`](./07-standard-responses.md) — response contract
 - [`08-pagination-filters-sorting.md`](./08-pagination-filters-sorting.md) — list endpoints
 - [`09-validation.md`](./09-validation.md) — DTOs
 - [`10-error-handling.md`](./10-error-handling.md) — error shape

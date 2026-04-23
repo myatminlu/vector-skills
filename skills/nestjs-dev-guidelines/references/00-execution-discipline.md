@@ -3,8 +3,12 @@
 ## TL;DR
 
 - Think before coding. State assumptions; don't silently guess.
+- Search for existing code before writing new code.
+- Fix root causes, not one observed phrase, prompt, or trigger string.
 - Prefer the smallest correct change. Don't build for hypothetical futures.
 - Make surgical edits. Touch only what the task requires.
+- Search and update the full impact surface before claiming the fix is done.
+- Ask before changing shared behavior or reusable contracts.
 - Turn requests into verifiable outcomes. Don't stop at "looks right".
 - When uncertain, ask early instead of implementing the wrong thing confidently.
 
@@ -14,7 +18,11 @@ Most bad backend changes are not caused by weak NestJS knowledge. They come from
 execution mistakes:
 
 - choosing one interpretation of an ambiguous request without saying so
+- writing a new helper/service when the repo already has one
+- patching one observed input with a regex or hardcoded rule instead of fixing the class of bug
 - adding abstractions, config, or helpers before they are justified
+- fixing one local call site while leaving the rest of the impact surface inconsistent
+- changing shared behavior without acknowledging the blast radius
 - refactoring neighboring code that was not part of the task
 - claiming a fix without a meaningful check
 
@@ -90,7 +98,44 @@ Would a senior reviewer say, "this works, but it's more complicated than the pro
 
 If yes, simplify before moving on.
 
-## 3. Surgical changes
+## 3. Search before writing new code
+
+Before adding a new util, service, helper, DTO, guard, interceptor, repository method, or query
+shape, first inspect the existing codebase for something close enough to reuse.
+
+### Search order
+
+1. The same module or feature folder
+2. Module-local `utils/`, DTOs, repositories, services, guards, interceptors
+3. `common/`, `core/`, `integrations/`, or other repo-wide shared code
+4. Existing tests that show the intended pattern
+
+### Rules
+
+- Do not create a new helper until you have checked whether one already exists.
+- For list endpoints, inspect existing pagination DTOs, contracts, and sibling endpoint behavior
+  before inventing or changing a pagination model.
+- Prefer extending existing local code when the semantics stay the same.
+- Prefer an established repo pattern over introducing a parallel pattern.
+- Reuse should reduce duplication, not force unrelated use cases into one abstraction.
+
+### Reuse hierarchy
+
+- Same-module existing code beats shared code.
+- Shared code beats new code when the behavior already matches.
+- New code beats forced reuse when reuse would bend the abstraction or confuse existing callers.
+
+### Good
+
+- Reuse an existing pagination DTO from the same module instead of adding a second one.
+- Extend an existing repository query method when the new filter preserves its meaning.
+
+### Bad
+
+- Add `date.util.ts` without checking whether date formatting already lives in `common/`.
+- Create a second auth helper because the first one is "not in the folder I expected".
+
+## 4. Surgical changes
 
 Every changed line should trace back to the user request or to verification that the request is
 safely handled.
@@ -114,7 +159,112 @@ safely handled.
 - Reorganize the module structure while fixing one endpoint bug.
 - Reformat the whole file while changing one query.
 
-## 4. Goal-driven execution
+## 5. Fix root causes, not trigger hacks
+
+Fix the underlying class of failure, not one observed wording, screenshot, or prompt fragment.
+
+### Rules
+
+- Do not patch broad behavior with phrase-specific regexes, hardcoded keywords, or manual
+  `if input === '...'` routing unless the product requirement is explicitly deterministic
+  rule-based matching.
+- Do not hide design problems in the system prompt when the real fix belongs in code,
+  architecture, state handling, or contracts.
+- If a proposed fix works only for one exact wording, assume it is incomplete until proven
+  otherwise.
+- Prefer semantic, typed, state-based, or architecture-based fixes over string-trigger hacks.
+
+### Questions to ask yourself
+
+1. What broader bug class produced this observed failure?
+2. What neighboring inputs, flows, or languages fail for the same reason?
+3. Am I fixing intent/state/contract handling, or only this one literal example?
+4. Would the fix still work if the user phrased the request differently?
+
+### Good
+
+- Route behavior from an explicit command registry, parsed intent, or structured state instead of
+  regex-matching one Burmese phrase.
+- Fix the shared planner/tool-selection logic instead of adding a special-case system-prompt rule
+  for one sentence.
+
+### Bad
+
+- `if (/ဘာလုပ်စရာရှိလဲ/.test(input)) return listTasks()` when the real issue is missing intent
+  detection.
+- Adding "if user says X, do Y" to the prompt for behavior that should be inferred from context.
+
+## 6. Ask before changing shared behavior
+
+Reusing code is good. Quietly changing reusable code that other callers depend on is not.
+
+### Ask before changing
+
+- a shared util or service used across modules
+- a DTO, guard, interceptor, or repository method with multiple callers
+- a function name, signature, return shape, or error behavior that other code may rely on
+- a reusable abstraction that needs branching or new flags to fit the new request
+- behavior that may require backward compatibility for existing callers
+
+### Usually safe without asking
+
+- extending local code inside the same module when semantics stay the same
+- making an internal helper more complete for the same use case
+- reusing an existing shared helper exactly as-is
+
+### Decision rule
+
+If the change preserves meaning and only widens support for the same concept, extending existing
+code is usually correct. If the change alters semantics, increases configurability, or affects
+multiple consumers, ask the user before changing the shared code.
+
+### Good
+
+"There is already a shared `PaginationQueryDto`. To use it here I would need to change its sort
+rules for other endpoints too. Do you want me to update the shared DTO, or keep this endpoint
+separate with a local DTO?"
+
+### Bad
+
+Silently generalizing a shared helper with two new flags because one endpoint needed slightly
+different behavior.
+
+## 7. Search and update the full impact surface
+
+When a fix touches shared code, contracts, names, DTOs, types, or behavior, the work is not done
+at the first passing call site. Search the whole impact surface and close it out deliberately.
+
+### Search order
+
+1. Direct call sites and imports
+2. Interfaces, DTOs, schemas, types, and validators tied to the changed behavior
+3. Tests, fixtures, evals, and snapshots
+4. Docs, examples, Swagger/OpenAPI schemas, and README snippets
+5. Error handling, logging, metrics, and other supporting flows affected by the change
+
+### Rules
+
+- Search all impacted callers before claiming a shared fix is complete.
+- Do not stop after the first local fix if the same issue likely exists elsewhere.
+- Token savings, diff size, or time pressure are not reasons to leave known affected locations
+  stale.
+- Scope by impact, not by convenience. A 5-line bug can require 50 aligned edits.
+- If the surface is genuinely too large to finish safely in one pass, say what you searched, what
+  remains, and why.
+
+### Good
+
+- Rename a shared service method and update all callers, tests, docs, and examples in the same
+  change.
+- Change an error shape and then update the filter, DTOs, tests, Swagger docs, and checklist
+  examples that reference it.
+
+### Bad
+
+- Fix one endpoint after a shared DTO change but leave sibling endpoints and tests stale.
+- Update the code but not the docs or examples that teach the old contract.
+
+## 8. Goal-driven execution
 
 Turn vague tasks into checks that can fail.
 
@@ -138,7 +288,7 @@ Use the cheapest check that gives real confidence, then escalate if needed:
 
 "It compiles" is not enough for behavior changes.
 
-## 5. Ask early when blocked
+## 9. Ask early when blocked
 
 Good questions are short and concrete.
 
@@ -146,6 +296,9 @@ Ask when:
 
 - the request has multiple materially different interpretations
 - the repo contains conflicting patterns and the choice affects behavior
+- the correct fix seems to require brittle phrase matching or manual one-off rules
+- reuse requires changing shared or reusable code in a way that may affect other callers
+- the impact surface is broad and different fixes have different blast radii
 - the change touches security, auth, billing, migrations, or external contracts and intent is
   unclear
 - the user appears to want a design decision, not just implementation
@@ -154,25 +307,37 @@ Do not ask when:
 
 - the repo already has a dominant pattern and the task fits it
 - the choice is a minor implementation detail with no behavioral difference
+- existing code can be reused as-is, or extended locally without changing shared semantics
+- the impact surface is clear and you can close it out completely
 - you can verify the answer directly from the codebase
 
-## 6. Definition of done
+## 10. Definition of done
 
 Do not present the task as finished until all are true:
 
 1. The requested behavior is implemented.
-2. The change is minimal and local to the task.
-3. Obvious edge cases relevant to the request are covered.
-4. The strongest practical verification for the task has been run, or you explicitly say what
+2. Existing local or shared code was considered before new code was introduced.
+3. The fix addresses the underlying bug class, not just one observed wording or example.
+4. The change is minimal and local to the task.
+5. Shared behavior was not changed silently when the blast radius was unclear.
+6. All known impacted callers, tests, docs, examples, and related contracts were updated, or you
+   explicitly say what remains.
+7. Obvious edge cases relevant to the request are covered.
+8. The strongest practical verification for the task has been run, or you explicitly say what
    you could not verify.
-5. The final explanation matches what changed and does not overclaim certainty.
+9. The final explanation matches what changed and does not overclaim certainty.
 
 ## Review checklist for yourself
 
 Before you stop, check:
 
 - Did I make any silent assumptions that should have been stated?
+- Did I check for existing reusable code before adding new code?
+- If this touched a list endpoint, did I inspect existing pagination usage before changing it?
+- Did I solve the class of bug, or only one literal example?
 - Did I add any helper, abstraction, or config that is not yet justified?
+- Did I change any shared code whose blast radius should have been confirmed first?
+- Did I search the full impact surface across callers, tests, docs, and contracts?
 - Did I touch unrelated lines?
 - Can I point to a concrete verification step?
 - If this diff appeared in review, would it look obviously scoped to the task?
@@ -180,8 +345,13 @@ Before you stop, check:
 ## Anti-patterns
 
 - "I'll just make it flexible while I'm here."
+- "I'll write a new helper; searching the repo will take longer."
+- "I'll just regex-match this one phrase" when the behavior is broader than one phrase.
+- "I'll patch the prompt" when the real fix belongs in code or architecture.
 - "I'll clean up this neighboring code too."
 - "This probably means X" without checking the repo or asking.
+- "I'll tweak the shared util quickly" without checking who else relies on it.
+- "One call site is fixed, that's probably enough" without searching the rest.
 - "Tests are unnecessary because the code is simple" when behavior changed.
 - "It should work" with no verification.
 

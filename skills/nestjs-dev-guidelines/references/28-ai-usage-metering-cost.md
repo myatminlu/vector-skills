@@ -194,15 +194,13 @@ Returns aggregated usage + cost for the user / org, grouped by day / model.
 
 ```json
 {
-  "data": {
-    "period": { "from": "2026-04-01", "to": "2026-04-30" },
-    "totals": { "callCount": 1284, "inputTokens": 2450000, "outputTokens": 180000, "costUsd": "12.45" },
-    "byModel": [
-      { "model": "claude-sonnet-4-6", "callCount": 1100, "costUsd": "10.20" },
-      { "model": "claude-haiku-4-5-20251001", "callCount": 184, "costUsd": "2.25" }
-    ],
-    "daily": [ { "date": "2026-04-01", "costUsd": "0.52" }, ... ]
-  }
+  "period": { "from": "2026-04-01", "to": "2026-04-30" },
+  "totals": { "callCount": 1284, "inputTokens": 2450000, "outputTokens": 180000, "costUsd": "12.45" },
+  "byModel": [
+    { "model": "claude-sonnet-4-6", "callCount": 1100, "costUsd": "10.20" },
+    { "model": "claude-haiku-4-5-20251001", "callCount": 184, "costUsd": "2.25" }
+  ],
+  "daily": [ { "date": "2026-04-01", "costUsd": "0.52" } ]
 }
 ```
 

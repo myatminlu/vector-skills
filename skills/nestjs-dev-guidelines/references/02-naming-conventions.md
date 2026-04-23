@@ -52,7 +52,7 @@ creates implicit exceptions that accumulate into tech debt.
 | Interface | `.interface.ts` | `payment-provider.interface.ts` |
 | Guard | `.guard.ts` | `jwt.guard.ts` |
 | Pipe | `.pipe.ts` | `parse-cuid.pipe.ts` |
-| Interceptor | `.interceptor.ts` | `response-envelope.interceptor.ts` |
+| Interceptor | `.interceptor.ts` | `logging.interceptor.ts` |
 | Filter | `.filter.ts` | `all-exceptions.filter.ts` |
 | Decorator | `.decorator.ts` | `current-user.decorator.ts` |
 | Event | `.event.ts` | `user-created.event.ts` |

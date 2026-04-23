@@ -213,8 +213,8 @@ describe('POST /v1/users (e2e)', () => {
       .send({ email: 'e2e@example.com', name: 'E', password: 'Password1234' })
       .expect(201);
 
-    expect(res.body.data).toMatchObject({ email: 'e2e@example.com' });
-    expect(res.body.data).not.toHaveProperty('passwordHash');
+    expect(res.body).toMatchObject({ email: 'e2e@example.com' });
+    expect(res.body).not.toHaveProperty('passwordHash');
   });
 
   it('returns 422 for invalid email', async () => {
@@ -223,7 +223,7 @@ describe('POST /v1/users (e2e)', () => {
       .send({ email: 'not-an-email', name: 'E', password: 'Password1234' })
       .expect(422);
 
-    expect(res.body.error.code).toBe('VALIDATION.FAILED');
+    expect(res.body.code).toBe('VALIDATION.FAILED');
   });
 });
 ```
@@ -233,7 +233,7 @@ describe('POST /v1/users (e2e)', () => {
 - Happy path of each endpoint (once).
 - Authorization (both "no auth → 401" and "wrong user → 403").
 - Validation (at least one failure case per endpoint).
-- Envelope shape (success + error).
+- Response contract (single-resource success, list `{ data, meta }`, error `{ code, message, details?, traceId }`).
 
 ### What NOT to e2e-test
 
@@ -292,7 +292,7 @@ Fix flaky immediately (skip is not a fix). Never merge flakes to main.
 ## Snapshots
 
 Use sparingly:
-- Small, meaningful snapshots (e.g., the error envelope shape).
+- Small, meaningful snapshots (e.g., the error response shape).
 - Review snapshot diffs carefully — CI passes often "because snapshot updated."
 - Avoid snapshots of large payloads (entity rows, HTML) — they become untrusted blobs.
 
@@ -360,5 +360,5 @@ it('works', async () => {
 
 - [`04-code-quality.md`](./04-code-quality.md) — what to test vs skip
 - [`05-thinking-decision-trees.md`](./05-thinking-decision-trees.md) — when a test is optional
-- [`10-error-handling.md`](./10-error-handling.md) — asserting on error envelope
+- [`10-error-handling.md`](./10-error-handling.md) — asserting on the error response body
 - [`14-database-orm-patterns.md`](./14-database-orm-patterns.md) — repository integration tests

@@ -37,8 +37,10 @@ reviews from opinion battles into pattern matching — fast, consistent, and kin
 | Business logic in controller | ✅ | |
 | No test for new branching logic | ✅ | |
 | Missing `Idempotency-Key` on money POST | ✅ | |
-| Wrong HTTP status / envelope | ✅ | |
+| Wrong HTTP status / response contract | ✅ | |
 | Direct provider SDK instead of LLM gateway | ✅ | |
+| Brittle regex / keyword / prompt hack for a generalized behavior bug | ✅ | |
+| Partial fix leaves other impacted callers, tests, or docs inconsistent | ✅ | |
 | Naming not matching convention | | ✅ |
 | Extra field in DTO | | ✅ |
 | Opportunity to simplify | | ✅ |
@@ -53,8 +55,10 @@ reviews from opinion battles into pattern matching — fast, consistent, and kin
 - [ ] PR description matches the diff
 - [ ] Happy path works (verified by test or local reasoning)
 - [ ] Unhappy paths handled (empty, missing, invalid, concurrent, auth failure)
+- [ ] The fix addresses the underlying bug class, not just one observed string, screenshot, or prompt (`00`)
 - [ ] Transactions wrap multi-row / multi-table writes (`04`, `13`)
 - [ ] No silent error swallow; all `catch` either recover or rethrow (`10`)
+- [ ] When shared code or a contract changed, all impacted callers, tests, docs, and examples were updated (`00`, `25`)
 
 ### Security
 
@@ -76,9 +80,12 @@ reviews from opinion battles into pattern matching — fast, consistent, and kin
 - [ ] URL uses plural nouns, kebab-case, versioned (`06`)
 - [ ] HTTP verb + status code match meaning (`06`)
 - [ ] `Idempotency-Key` on state-creating POSTs (`06`)
-- [ ] Response envelope `{ data, meta, error }` consistent (`07`)
-- [ ] List endpoints paginate (cursor default; offset where justified) (`08`)
-- [ ] Error responses: `{ code, message, traceId }`, namespaced codes (`10`)
+- [ ] Response contract is consistent: single success is a plain object, list success is `{ data, meta }`, error is `{ code, message, details?, traceId }` (`07`, `10`)
+- [ ] List endpoints paginate, and the pagination model is justified by real UX + consistency + scale needs (`08`)
+- [ ] Pagination usage is consistent with sibling endpoints and shared DTO/contracts where appropriate (`00`, `08`)
+- [ ] `meta.pagination` shape matches the endpoint's chosen model (cursor vs offset) (`07`, `08`, `25`)
+- [ ] If cursor/keyset is used with configurable sort, cursor payload + seek predicate + index match the active sort tuple (`08`)
+- [ ] Error responses: `{ code, message, details?, traceId }`, namespaced codes (`10`)
 - [ ] Swagger decorators: `@ApiTags`, `@ApiOperation`, `@ApiResponse` per status (`25`)
 
 ### Data / DB
@@ -103,6 +110,19 @@ reviews from opinion battles into pattern matching — fast, consistent, and kin
 - [ ] `index.ts` exports only the public API (`03`)
 - [ ] Folder structure matches `01` (core/common/integrations/modules/events/commands)
 - [ ] File and symbol names follow `02`
+
+### Design / SOLID / maintainability
+
+- [ ] Each class/function has one clear responsibility; no mixed HTTP/domain/DB/provider concerns (`04`)
+- [ ] New behavior extends the design cleanly; no boolean flags or mode branches forcing unrelated use cases together (`04`)
+- [ ] The diff does not hardcode one phrase, regex, keyword, or prompt rule where the real behavior should be semantic, state-based, or architectural (`00`, `04`)
+- [ ] Implementations behind one interface are substitutable; no surprising behavior, unsupported methods, or incompatible return/error contracts (`04`)
+- [ ] Dependencies are narrow; consumers are not forced to depend on methods they do not need (`04`)
+- [ ] Business logic depends on abstractions/DI, not concrete SDKs, framework globals, or infrastructure details (`04`, `26`)
+- [ ] Cohesion is high and coupling is low; the change does not require lockstep edits across distant modules without a strong reason (`04`)
+- [ ] Side effects are encapsulated; network/DB/queue/clock randomness is isolated behind clear boundaries (`04`, `19`)
+- [ ] Naming is consistent with domain language across DTOs, services, events, and persistence (`04`, `02`, `13`)
+- [ ] Reuse was considered before adding new helpers/services, and shared behavior was not changed silently (`00`, `04`)
 
 ### Testing
 
@@ -154,6 +174,7 @@ Before posting:
 - Is this a blocker or a suggestion? Label it.
 - Have you cited the rule / reference?
 - Did you provide the fix or an example, not just "this is wrong"?
+- Did you check whether the diff fixes the class of issue rather than one literal trigger?
 - Is the tone kind? Short, direct, not personal.
 
 Good:
@@ -183,6 +204,7 @@ Approve pending blockers 1–3.
 ## Anti-patterns (bad reviews)
 
 - Blocking on style / taste. Use linters instead.
+- Missing the broader bug because the shown example happens to pass.
 - "Have you considered X?" without evidence X is better.
 - Drive-by comments without reading the surrounding code.
 - Personal attack language.
@@ -195,6 +217,8 @@ Approve pending blockers 1–3.
 - [ ] Read PR description before code
 - [ ] Read diff end-to-end before commenting
 - [ ] Blockers are truly blockers (security / data / non-negotiable)
+- [ ] I checked whether the fix solves the broader failure mode, not just one example
+- [ ] I checked whether impacted callers/tests/docs/contracts were updated where needed
 - [ ] Suggestions are helpful, not preferences
 - [ ] Each comment cites the rule and offers a fix
 - [ ] Overall verdict at the end (approve / request changes / comment)

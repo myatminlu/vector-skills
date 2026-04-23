@@ -48,8 +48,8 @@ internal or protected.
 export class PaymentController {
   @Get()
   @ApiOperation({ summary: 'List payments', description: 'Paginated list of payments.' })
-  @ApiQuery({ type: ListPaymentsQueryDto })
-  @ApiResponse({ status: 200, description: 'OK', type: PaymentListResponseDto })
+  @ApiQuery({ type: ListPaymentsCursorQueryDto })
+  @ApiResponse({ status: 200, description: 'OK', type: CursorPaymentListResponseDto })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async list() { ... }
 
@@ -60,6 +60,8 @@ export class PaymentController {
   async create(@Body() dto: CreatePaymentDto) { ... }
 }
 ```
+
+For an offset-based endpoint, swap in the matching offset query DTO and offset response DTO.
 
 ## DTO decorators
 
@@ -91,51 +93,81 @@ With the plugin, `@ApiProperty` is inferred from the TypeScript types + class-va
 
 ## Response DTOs
 
-The envelope matters in the docs. Declare it once:
+Document the actual wire shape. In this skill's standard contract:
 
-```ts
-export class EnvelopeDto<T> {
-  @ApiProperty()
-  data!: T;
-  @ApiPropertyOptional()
-  meta?: Record<string, unknown>;
-}
+- Single-resource success returns the object itself
+- List success returns `{ data, meta }`
+- `meta.pagination` uses the DTO that matches the endpoint's pagination model
+- Errors return `{ code, message, details?, traceId }`
 
-export class ErrorEnvelopeDto {
-  @ApiProperty()
-  error!: {
-    code: string;
-    message: string;
-    details?: Record<string, unknown>;
-    traceId?: string;
-  };
-}
-```
-
-Then for each endpoint:
-
-```ts
-@ApiExtraModels(PaymentResponseDto, EnvelopeDto)
-@ApiResponse({
-  status: 200,
-  schema: {
-    allOf: [
-      { $ref: getSchemaPath(EnvelopeDto) },
-      { properties: { data: { $ref: getSchemaPath(PaymentResponseDto) } } },
-    ],
-  },
-})
-```
-
-Or keep it simple with a per-endpoint response DTO that already wraps:
+### Single-resource success
 
 ```ts
 export class PaymentResponseDto {
-  @ApiProperty() data!: PaymentDto;
+  @ApiProperty() id!: string;
+  @ApiProperty() amountCents!: number;
+  @ApiProperty() status!: string;
 }
+
+@ApiResponse({ status: 200, type: PaymentResponseDto })
 ```
 
-Pick one style per project and stick to it.
+### List success
+
+```ts
+export class CursorPaginationMetaDto {
+  @ApiProperty({ nullable: true }) nextCursor!: string | null;
+  @ApiProperty() hasMore!: boolean;
+  @ApiProperty() limit!: number;
+}
+
+export class CursorPaymentListMetaDto {
+  @ApiProperty({ type: CursorPaginationMetaDto }) pagination!: CursorPaginationMetaDto;
+}
+
+export class CursorPaymentListResponseDto {
+  @ApiProperty({ type: [PaymentResponseDto] }) data!: PaymentResponseDto[];
+  @ApiProperty({ type: CursorPaymentListMetaDto }) meta!: CursorPaymentListMetaDto;
+}
+
+@ApiResponse({ status: 200, type: CursorPaymentListResponseDto })
+```
+
+```ts
+export class OffsetPaginationMetaDto {
+  @ApiProperty() page!: number;
+  @ApiProperty() limit!: number;
+  @ApiProperty() total!: number;
+  @ApiProperty() totalPages!: number;
+}
+
+export class OffsetUserListMetaDto {
+  @ApiProperty({ type: OffsetPaginationMetaDto }) pagination!: OffsetPaginationMetaDto;
+}
+
+export class OffsetUserListResponseDto {
+  @ApiProperty({ type: [UserResponseDto] }) data!: UserResponseDto[];
+  @ApiProperty({ type: OffsetUserListMetaDto }) meta!: OffsetUserListMetaDto;
+}
+
+@ApiResponse({ status: 200, type: OffsetUserListResponseDto })
+```
+
+### Error response
+
+```ts
+export class ApiErrorResponseDto {
+  @ApiProperty() code!: string;
+  @ApiProperty() message!: string;
+  @ApiPropertyOptional() details?: Record<string, unknown>;
+  @ApiProperty() traceId!: string;
+}
+
+@ApiResponse({ status: 422, type: ApiErrorResponseDto })
+```
+
+Use the DTO that matches the endpoint's pagination model. Prefer explicit per-endpoint DTOs over
+generic wrapper tricks. They produce cleaner Swagger and match the real response contract directly.
 
 ## Auth schemes
 
@@ -237,7 +269,8 @@ export class UserController {
 - Using `@ApiProperty({ type: Object })` for unknown shapes. Narrow it or use `additionalProperties`.
 - Leaving `/docs` public with every endpoint — including internal/admin — in production.
 - Checking generated clients into the **server** repo. They belong in consumer repos.
-- Drifting from the envelope: some endpoints documented as raw shape, others as envelope.
+- Drifting from the standard response contract: e.g., documenting one list endpoint with cursor metadata and another with offset metadata inconsistently, or wrapping single resources inconsistently.
+- Documenting a different shape than what the endpoint actually returns on the wire.
 
 ## Code review checklist
 
@@ -246,13 +279,13 @@ export class UserController {
 - [ ] Every status code returned is declared with `@ApiResponse`
 - [ ] DTOs use `@ApiProperty` / `@ApiPropertyOptional`
 - [ ] Enums declared with `enum: MyEnum`
-- [ ] Response shape matches the envelope consistently
+- [ ] Response shape matches the standard contract from `07` (single-resource object, `{ data, meta }` for lists, `{ code, message, details?, traceId }` for errors)
 - [ ] Swagger disabled or auth-gated in production
 - [ ] Params with specific format (UUID, email) declared + validated
 
 ## See also
 
 - [`06-api-design.md`](./06-api-design.md) — URL and versioning decisions reflected in docs
-- [`07-standard-responses.md`](./07-standard-responses.md) — envelope in the schema
+- [`07-standard-responses.md`](./07-standard-responses.md) — standard response contract in the schema
 - [`09-validation.md`](./09-validation.md) — `class-validator` <-> `@ApiProperty`
 - [`12-authentication-patterns.md`](./12-authentication-patterns.md) — auth schemes

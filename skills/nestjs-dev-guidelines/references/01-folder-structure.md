@@ -32,7 +32,7 @@ src/
 │   ├── dto/                     # e.g. PaginationQueryDto
 │   ├── filters/                 # AllExceptionsFilter
 │   ├── guards/                  # generic guards (not auth-specific)
-│   ├── interceptors/            # ResponseEnvelopeInterceptor, TimeoutInterceptor
+│   ├── interceptors/            # TimeoutInterceptor, LoggingInterceptor, CacheInterceptor
 │   ├── pipes/                   # ParseCuidPipe, TrimPipe
 │   ├── types/                   # shared type definitions
 │   └── utils/                   # pure functions only
