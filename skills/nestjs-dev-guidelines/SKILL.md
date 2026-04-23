@@ -1,14 +1,15 @@
 ---
 name: nestjs-dev-guidelines
-description: 'Production-grade NestJS and Node.js/TypeScript backend standards for writing, reviewing, and evolving code like a senior backend engineer. Use this skill when working on NestJS or Node/TypeScript backends that need strong judgment on architecture, module boundaries, controllers vs services, DTO validation, API design, response contracts, error handling, auth, database schema, migrations, BullMQ jobs, observability, testing, or AI backend patterns such as LLM gateways, SSE streaming, usage metering, and quotas. Trigger for implementation work, refactors, PR reviews, audits, endpoint design, schema design, and production-readiness checks across files like *.module.ts, *.controller.ts, *.service.ts, DTOs, repositories, migrations, and backend integrations. The skill provides concrete project rules, decision trees, and review checklists that go beyond generic framework knowledge. Do NOT trigger for non-Node backends (Django, Rails, Spring, Go, Laravel, FastAPI) or pure frontend work.'
+description: 'Production-grade NestJS backend standards for writing, reviewing, and evolving NestJS and Nest-style Node.js/TypeScript services like a senior backend engineer. Use this skill when the codebase already uses NestJS concepts such as modules, controllers, providers/services, DTOs, guards, pipes, or Nest-oriented folder boundaries, or when the user is explicitly designing those patterns in a NestJS app. Trigger for implementation work, refactors, PR reviews, audits, endpoint design, schema design, migrations, BullMQ jobs, observability, testing, and AI backend patterns such as LLM gateways, SSE streaming, usage metering, and quotas across files like *.module.ts, *.controller.ts, *.service.ts, DTOs, repositories, migrations, and backend integrations. Do NOT trigger for plain Express/Fastify/Hono/Koa backends unless the repo already follows Nest-style module/controller/DTO conventions, and do NOT trigger for non-Node backends or pure frontend work.'
 ---
 
 # NestJS Dev Guidelines
 
-A complete set of production-grade NestJS and Node.js backend standards. Apply these rules
-whenever working on a NestJS project — writing new code, reviewing PRs, or making architecture
-decisions. Think like a senior backend engineer: consistency over cleverness, explicit over
-implicit, boundaries over shortcuts.
+A complete set of production-grade NestJS and Nest-style Node.js backend standards. Apply these
+rules whenever working on a codebase that already uses NestJS concepts such as modules,
+controllers, providers/services, DTOs, pipes, and guards, or when the task is explicitly about
+designing those patterns. Think like a senior backend engineer: consistency over cleverness,
+explicit over implicit, boundaries over shortcuts.
 
 ## How to use this skill
 
@@ -19,6 +20,29 @@ implicit, boundaries over shortcuts.
    self-contained: TL;DR, rules, good/bad examples, anti-patterns, and a review checklist.
 4. When reviewing a PR, run through `references/29-code-review-checklist.md` + the topic
    references relevant to the diff.
+
+## Scope and precedence
+
+Use this section when the repo is "backend TypeScript" but not obviously a standard NestJS app.
+
+1. **NestJS-first scope.** Apply this skill directly when the repo already uses NestJS primitives
+   (`@Module`, controllers, providers/services, guards, pipes, DTOs) or when the user is asking
+   you to design a NestJS solution.
+2. **Plain Node backends are partial-match only.** If the repo is plain Express/Fastify/Hono/Koa
+   without NestJS primitives, use only the cross-cutting guidance here (validation, contracts,
+   authz, DB design, testing, observability). Do not force Nest-specific APIs, decorators, or
+   folder structure onto that codebase.
+3. **Protect outcomes first, tooling second.** The non-negotiables below are invariants first and
+   implementation defaults second. Centralized input validation, stable response contracts,
+   structured redacted logging, ownership checks, and test coverage matter more than the exact
+   library used to achieve them.
+4. **Follow equivalent-safe repo conventions.** If the repo already uses a different but healthy
+   mechanism that preserves the same safety/property boundary (for example Zod instead of
+   `class-validator`, or a repo-standard structured logger instead of `nestjs-pino`), follow the
+   repo rather than rewriting it mid-task.
+5. **Escalate harmful conflicts.** If the existing pattern weakens security, correctness, data
+   integrity, or a stable contract, call it out explicitly and ask before normalizing or widening
+   that pattern.
 
 ## Execution discipline
 
@@ -50,7 +74,7 @@ failure modes: silent assumptions, overbuilt code, broad refactors, and unverifi
 
 Open `references/00-execution-discipline.md` for the full checklist and examples.
 
-## Non-negotiables (top-level rules, never break these)
+## Non-negotiables (protect these outcomes; prefer these patterns)
 
 Each rule has a **Why** so you can reason about edge cases instead of applying it blindly.
 
@@ -219,7 +243,7 @@ AI bit is a module, not a framework.
   broad, clever ones.
 - **Rules > style preferences.** These are rules because they prevent real bugs or pay back
   in maintainability. Style debates are not covered.
-- **Consistency > cleverness.** If a repo has an established pattern that differs from this
-  skill, follow the repo unless the pattern is actively harmful.
+- **Consistency > cleverness.** If a repo has an established equivalent-safe pattern that differs
+  from this skill, follow the repo unless the pattern is actively harmful.
 - **When in doubt, keep it boring.** Boring code is easy to review, easy to onboard, and
   easy to replace. That is the point.

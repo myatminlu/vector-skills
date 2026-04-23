@@ -1,0 +1,35 @@
+{
+  "skill_name": "nestjs-dev-guidelines",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review this NestJS PR. The controller hashes passwords, queries Prisma directly, accepts @Body() body: any, and returns res.status(200).json({ success: false }) for duplicate email. Tell me what blocks approval and what is only a suggestion.",
+      "expected_output": "Flags blockers for business logic in controller, missing DTO validation, inconsistent error contract, and direct DB access from the controller. Separates blockers from suggestions and cites the relevant guideline files.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Design GET /v1/payments for a NestJS app. We need cursor pagination, filter by status, sort by createdAt or amount, and a response shape clients can reuse across list endpoints.",
+      "expected_output": "Chooses a justified pagination model, uses DTO-based validation, whitelists filter/sort fields, and returns a consistent { data, meta } contract with pagination metadata.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "I have a plain Express backend with route files and service files. Should I apply this NestJS skill directly when refactoring an endpoint, or only borrow parts of it?",
+      "expected_output": "Explains that the skill is NestJS-first, avoids forcing Nest-specific decorators or folder structure, and uses only the cross-cutting backend guidance that still fits the repo.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "Our NestJS repo already uses Zod request parsing, pino-http for structured logs, and src/features instead of src/modules. Review a small endpoint change without rewriting those conventions unless they are unsafe.",
+      "expected_output": "Respects equivalent-safe repo conventions, applies the underlying safety rules instead of demanding a migration to class-validator or nestjs-pino, and only escalates if a convention is harmful.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "Design a NestJS streaming endpoint for an LLM feature that sends partial results to the browser, records token usage for quota enforcement, and leaves us enough observability to debug failures in production.",
+      "expected_output": "Uses an LLM gateway pattern, cancel-aware SSE streaming, structured observability, and per-call usage/cost metering suitable for quotas and production debugging.",
+      "files": []
+    }
+  ]
+}
