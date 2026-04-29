@@ -25,7 +25,10 @@ src/
 │   ├── database/
 │   ├── cache/
 │   ├── logger/
-│   └── mail/
+│   ├── mail/
+│   ├── health/                  # liveness/readiness — see 34
+│   ├── tenancy/                 # tenant context, multi-tenant guards — see 33
+│   └── telemetry/               # OpenTelemetry, tracing — see 22
 │
 ├── common/                      # generic, domain-less utilities
 │   ├── decorators/
@@ -65,7 +68,7 @@ src/
 
 ### `core/` — app-wide infrastructure
 
-- Modules that every feature needs: auth, database, cache, logger, mail.
+- Modules that every feature needs: auth, database, cache, logger, mail, health, tenancy, telemetry.
 - Usually `@Global()` so features don't have to re-import them.
 - One subfolder per concern. Each has its own `*.module.ts`.
 - If you find yourself re-importing a module in every feature, consider moving it to `core/`.
@@ -94,10 +97,15 @@ That is a circular-dependency trap.
 integrations/stripe/
 ├── stripe.module.ts
 ├── stripe-payment.client.ts      # thin wrapper around Stripe SDK
-├── stripe-webhook.client.ts      # webhook signature verification
+├── stripe-webhook.client.ts      # webhook signature verification only
 └── types/
     └── stripe-event.type.ts
 ```
+
+The webhook **controller** (the HTTP endpoint that receives the payload, dedupes, enqueues
+work) is a feature concern — it lives in `modules/<feature>/webhooks/`, not here. The
+integration only owns the bytes-level concerns: signature verification, raw-body parsing,
+event-type definitions. See [`36-webhooks.md`](./36-webhooks.md).
 
 ### `modules/` — business features
 
@@ -145,6 +153,18 @@ You have a new file. Ask:
    → modules/<that-module>/<kind>/   (e.g. modules/user/utils/)
 ```
 
+**Split-placement cases.** A few features have parts in two buckets:
+
+- **Webhook from a third party.** Signature verification + event types →
+  `integrations/<provider>/`. The receiving controller and the business handling →
+  `modules/<feature>/webhooks/`. See [`36-webhooks.md`](./36-webhooks.md).
+- **File uploads.** SDK wrapper for the bucket (e.g., presigned URL generation) →
+  `integrations/aws-s3/`. The upload controller, quota checks, and metadata persistence →
+  `modules/<feature>/`. See [`37-file-uploads.md`](./37-file-uploads.md).
+- **Dynamic modules (`forRoot` / `forRootAsync`).** Belong with the thing they configure:
+  infra → `core/<name>/`, vendor SDK → `integrations/<provider>/`. Feature modules should
+  not need `forRoot`. See [`38-decorators-scopes-dynamic-modules.md`](./38-decorators-scopes-dynamic-modules.md).
+
 ## Good vs bad
 
 ### Good
@@ -178,6 +198,8 @@ src/payment/                        # wrong: not under modules/
 - **Cross-module imports from deep paths.** Import from `modules/user` via its barrel `index.ts`, not from `modules/user/dto/create-user.dto.ts`.
 - **Integrations in `core/`.** Stripe is not infrastructure; it's an external dependency. `integrations/`.
 - **Business logic in `common/`.** If it references a user or a payment, it's not common.
+- **Webhook controller in `integrations/`.** Signature verification belongs there; the controller and domain handling do not. They go in `modules/<feature>/webhooks/`.
+- **Health endpoint inside a feature module.** Liveness/readiness is app-wide infra. It belongs in `core/health/`, not in `modules/user/` or anywhere else.
 - **"misc/" bucket.** No. If you don't know where it goes, re-read rules 1–7 above.
 
 ## Code review checklist
@@ -194,3 +216,7 @@ src/payment/                        # wrong: not under modules/
 - [`02-naming-conventions.md`](./02-naming-conventions.md) — how files inside each folder are named
 - [`03-module-design.md`](./03-module-design.md) — internal layout of a `modules/<feature>/`
 - [`18-events.md`](./18-events.md) — when to put code in `events/` vs in a module
+- [`34-health-shutdown.md`](./34-health-shutdown.md) — what lives in `core/health/`
+- [`36-webhooks.md`](./36-webhooks.md) — split between `integrations/<provider>/` and `modules/<feature>/webhooks/`
+- [`37-file-uploads.md`](./37-file-uploads.md) — split between `integrations/<bucket>/` and the feature module
+- [`38-decorators-scopes-dynamic-modules.md`](./38-decorators-scopes-dynamic-modules.md) — where dynamic modules belong

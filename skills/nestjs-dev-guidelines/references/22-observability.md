@@ -16,8 +16,9 @@ Missing any one and incidents become guesswork.
 
 ## OpenTelemetry setup
 
+`core/observability/otel.ts`:
+
 ```ts
-// core/observability/otel.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
@@ -38,12 +39,30 @@ export const otel = new NodeSDK({
   }),
   instrumentations: [getNodeAutoInstrumentations({
     '@opentelemetry/instrumentation-fs': { enabled: false },    // noisy, rarely useful
-    '@opentelemetry/instrumentation-http': { ignoreIncomingRequestHook: (r) => r.url === '/health' },
+    '@opentelemetry/instrumentation-http': {
+      // match `/health`, `/health/liveness`, `/health/readiness` — not just exact `/health`
+      ignoreIncomingRequestHook: (r) => r.url?.startsWith('/health') ?? false,
+    },
   })],
 });
+```
 
-// main.ts — BEFORE NestFactory
+`main.ts` — start the SDK **before** any application import that may be auto-instrumented
+(NestFactory, ORM clients, HTTP clients):
+
+```ts
+import { otel } from './core/observability/otel';
 otel.start();
+
+// only after otel.start() has run:
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  await app.listen(3000);
+}
+bootstrap();
 ```
 
 Auto-instrumentations give you HTTP server/client spans, pg, Redis, DNS, etc. for free.
@@ -53,7 +72,7 @@ Auto-instrumentations give you HTTP server/client spans, pg, Redis, DNS, etc. fo
 Add spans for business-important operations:
 
 ```ts
-import { trace, SpanKind } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('payment-service');
 
@@ -64,11 +83,12 @@ async charge(userId: string, amount: number) {
       span.setAttribute('charge.status', 'success');
       return result;
     } catch (e) {
+      span.setAttribute('charge.status', 'failed');
       span.recordException(e as Error);
-      span.setStatus({ code: 2, message: 'charge failed' });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: 'charge failed' });
       throw e;
     } finally {
-      span.end();
+      span.end(); // required — startActiveSpan does not auto-end the span
     }
   });
 }
@@ -85,6 +105,11 @@ Use sparingly. Every span costs a little; hot paths shouldn't be over-instrument
 - Quantities: `batchSize`, `rowCount`, `tokenCount`
 
 Don't put PII (email, name, address) on spans — same as logs.
+
+> Trace attributes vs metric labels: spans tolerate high-cardinality attributes
+> (`userId`, `payment.id`) because each trace is stored once. Metric labels become
+> separate time-series per unique value, so they must stay low-cardinality. The
+> same identifier is fine on a span and forbidden on a counter.
 
 ## Metrics
 
@@ -132,16 +157,29 @@ Use:
 
 ```ts
 import { context, propagation } from '@opentelemetry/api';
+import type { Job, Queue } from 'bullmq';
 
-async enqueue(data: T) {
-  const carrier: Record<string, string> = {};
-  propagation.inject(context.active(), carrier);
-  await this.queue.add('job', { ...data, _carrier: carrier });
-}
+type WithCarrier<T> = T & { _carrier?: Record<string, string> };
 
-async process(job: Job<T & { _carrier?: Record<string, string> }>) {
-  const parent = job.data._carrier ? propagation.extract(context.active(), job.data._carrier) : context.active();
-  return context.with(parent, () => this.handle(job.data));
+class TracedQueue<T> {
+  constructor(private readonly queue: Queue<WithCarrier<T>>) {}
+
+  async enqueue(data: T): Promise<void> {
+    const carrier: Record<string, string> = {};
+    propagation.inject(context.active(), carrier);
+    await this.queue.add('job', { ...data, _carrier: carrier });
+  }
+
+  async process(job: Job<WithCarrier<T>>) {
+    const parent = job.data._carrier
+      ? propagation.extract(context.active(), job.data._carrier)
+      : context.active();
+    return context.with(parent, () => this.handle(job.data));
+  }
+
+  protected handle(_data: WithCarrier<T>): unknown {
+    throw new Error('override in subclass');
+  }
 }
 ```
 
@@ -161,14 +199,19 @@ const langfuse = new Langfuse({ publicKey, secretKey });
 async generate(userId: string, prompt: string) {
   const trace = langfuse.trace({ userId, name: 'completion' });
   const generation = trace.generation({
-    name: 'claude-4-7-sonnet',
-    model: 'claude-sonnet-4-6',
+    name: 'completion',
+    model: env.LLM_COMPLETION_MODEL, // verify current provider model id in official docs/config
     input: prompt,
   });
   try {
     const resp = await this.anthropic.messages.create({ ... });
+    // resp.content is a content-block array (text / tool_use / thinking) — flatten to text
+    // for Langfuse output. Verify shape against the current Anthropic SDK before copying.
+    const outputText = resp.content
+      .map((b) => (b.type === 'text' ? b.text : ''))
+      .join('');
     generation.end({
-      output: resp.content,
+      output: outputText,
       usage: { input: resp.usage.input_tokens, output: resp.usage.output_tokens },
     });
     return resp;
@@ -200,13 +243,16 @@ Save dashboards as code (Grafana JSON in repo) so they survive account resets an
 - Page only on user-facing impact. Warn-only alerts for internal-only regressions.
 - Avoid alert fatigue: a good alert fires ≤ once per week on average.
 
-Common:
+Common starting thresholds — tune per service SLO and traffic profile, do not copy verbatim:
+
 - `5xx > 2% for 5m → page`
 - `p95 > 2s for 10m → page`
 - `DB pool waiting > 0 for 2m → page`
 - `DLQ depth > 100 → warn`
 - `outbound upstream error > 10% for 5m → page`
-- `LLM cost > $X per hour → warn`
+- `LLM cost > $X per hour (global) → warn`
+- `LLM cost > $X per hour (per user) → page` — catches a single runaway loop or leaked key
+- `LLM cost > $X per hour (per org) → page` — B2B SaaS isolation
 
 ## SLIs / SLOs
 

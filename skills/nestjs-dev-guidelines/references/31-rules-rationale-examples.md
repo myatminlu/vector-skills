@@ -35,8 +35,14 @@ bad. Use when you want the one-screen answer instead of opening the full referen
 
 **Why:** SQL injection mitigation; also plan caching.
 
-✅ `pool.query('SELECT ... WHERE id = $1', [id])`
-❌ `pool.query(\`SELECT ... WHERE id = '${id}'\`)`
+✅
+```ts
+pool.query('SELECT ... WHERE id = $1', [id]);
+```
+❌
+```ts
+pool.query(`SELECT ... WHERE id = '${id}'`);
+```
 → See `11`, `14`.
 
 ---
@@ -45,9 +51,9 @@ bad. Use when you want the one-screen answer instead of opening the full referen
 
 **Why:** every HTTP library expects it. Returning `200 { success: false }` confuses clients.
 
-✅ `throw new ConflictException({ code: 'USER.EMAIL_TAKEN' })` → filter renders 409.
+✅ `throw new ConflictException({ code: 'USER.EMAIL_TAKEN', message: 'That email is already registered.' })` → filter renders 409.
 ❌ `return res.status(200).json({ success: false, error: 'email taken' })`.
-→ See `06`, `07`, `10`.
+→ See `06`, `07`, `10`, `39`.
 
 ---
 
@@ -55,9 +61,11 @@ bad. Use when you want the one-screen answer instead of opening the full referen
 
 **Why:** SDK generation, consistent client handling.
 
-✅ `{ ... }` for single-resource success, `{ "data": [...], "meta": { "pagination": {...} } }` for list success with pagination metadata that matches the endpoint's cursor or offset model, `{ "code": "X.Y", "message": "...", "details": { ... }, "traceId": "..." }` for errors when details are present.
+✅ Single resource — the object directly, no wrapper: `{ "id": "u_1", "email": "alice@example.com", "createdAt": "..." }`.
+✅ List with pagination: `{ "data": [...], "meta": { "pagination": {...} } }` (metadata shape matches the endpoint's cursor or offset model).
+✅ Error: `{ "code": "X.Y", "message": "...", "details": { ... }, "traceId": "..." }` (`details` only when present).
 ❌ Per-endpoint shapes: `{ "result": ... }`, `{ "users": [...] }`, `{ "error": { ... } }`.
-→ See `07`.
+→ See `07`, `39`.
 
 ---
 
@@ -67,7 +75,7 @@ bad. Use when you want the one-screen answer instead of opening the full referen
 
 ✅ `code: 'PAYMENT.INSUFFICIENT_FUNDS'`
 ❌ `code: 'error_5'` or `message: 'funds'`.
-→ See `10`.
+→ See `10`, `39`.
 
 ---
 
@@ -76,8 +84,8 @@ bad. Use when you want the one-screen answer instead of opening the full referen
 **Why:** unbounded lists OOM the server. Choose cursor/keyset for sequential browsing over mutable
 or large data; choose offset when numbered pages or exact totals are actual product requirements.
 
-✅ `GET /payments?limit=50&cursor=...` → `{ data, meta: { pagination } }`.
-✅ `GET /admin/users?page=3&limit=50` when page-number UX is genuinely required.
+✅ Cursor (default for sequential browsing): `GET /payments?limit=50&cursor=...` → `{ data, meta: { pagination } }`.
+✅ Offset (only when page-number UX is genuinely required): `GET /admin/users?page=3&limit=50`.
 ❌ `GET /payments` → `[...all of it...]`.
 → See `08`.
 
@@ -173,11 +181,13 @@ or large data; choose offset when numbered pages or exact totals are actual prod
 
 ---
 
-## R17 — Bearer / cookie both supported; cookie wins
+## R17 — Bearer / cookie both supported; cookie wins and fails closed
 
-**Why:** cookies revoke instantly; Bearer may outlive sign-out until `exp`.
+**Why:** cookies revoke instantly; Bearer may outlive sign-out until `exp`. If a browser
+request has an invalid cookie, falling back to Bearer lets an injected header change identity.
 
-✅ Guard tries cookie first; falls back to Bearer.
+✅ Guard tries cookie first; if present and invalid, returns `401`; only falls back to Bearer
+when no cookie is present.
 ❌ Bearer-only + long `exp` + no revocation list → zombie tokens.
 → See `12`.
 
@@ -187,8 +197,8 @@ or large data; choose offset when numbered pages or exact totals are actual prod
 
 **Why:** stateless JWTs are uncancellable without it. Short access bounds damage.
 
-✅ 15-min access, refresh rotation, DB-backed revocation by user.
-❌ 7-day access, no rotation, no revocation.
+✅ 15-min access, refresh rotation, hashed refresh-token storage, DB-backed revocation by user.
+❌ 7-day access, raw refresh tokens in DB, no rotation, no revocation.
 → See `12`.
 
 ---
@@ -273,13 +283,17 @@ or large data; choose offset when numbered pages or exact totals are actual prod
 
 ---
 
-## R27 — Webhooks: verify, dedupe, replay-window
+## R27 — Webhooks: verify, dedupe, ack-fast
 
-**Why:** webhooks are inputs from the world; same discipline as any input, plus signature.
+**Why:** webhooks are inputs from the world; same discipline as any input, plus signature,
+plus retry semantics. Slow `2xx`s and `4xx`s on unhandled types both cause duplicate work.
 
-✅ `stripe.webhooks.constructEvent(raw, signature, secret)` → check replay id → process → mark.
-❌ Parse first, check later; no dedupe.
-→ See `11`, `18`.
+✅ Verify signature on raw bytes (`crypto.timingSafeEqual`) → insert `(provider, event_id)` →
+   enqueue → return `2xx`. Worker rehydrates tenant context and re-fetches authoritative
+   state for high-stakes events.
+❌ Parse first, check later; no dedupe; sync work in the handler; `4xx` for unhandled
+   event types.
+→ See `36`, `11`, `18`, `19`, `33`.
 
 ---
 
@@ -369,7 +383,7 @@ or large data; choose offset when numbered pages or exact totals are actual prod
 
 ✅ Service checks `row.userId === user.id` or scopes `WHERE user_id = $user`.
 ❌ Any logged-in user can read any row by id.
-→ See `11`, `12`.
+→ See `11`, `12`, `33`.
 
 ---
 
@@ -407,9 +421,79 @@ or large data; choose offset when numbered pages or exact totals are actual prod
 
 **Why:** consumers need to know what to expect. Missing `@ApiResponse(422)` means no SDK error type.
 
-✅ `@ApiResponse({ status: 200, ... })`, `@ApiResponse({ status: 422, ... })`.
-❌ Only the happy path documented.
+✅ `@ApiResponse({ status: 200, ... })` + `@ApiResponse({ status: 422, ... })` + every other status the handler can return.
+❌ `@ApiResponse({ status: 200, ... })` only — error statuses undocumented.
 → See `25`.
+
+---
+
+## R41 — Tenant identity is server-derived, not client-supplied
+
+**Why:** a client-supplied `orgId` that is trusted without a membership check is the classic cross-tenant leak. Repository-level filtering must also enforce it in case a service check is missed.
+
+✅ `ctx.user.activeOrgId` from session/JWT; `WHERE org_id = $ctxOrg` in every tenant-scoped query.
+❌ `@Body() { orgId }` passed straight through to `WHERE org_id = $orgId`.
+→ See `33`, `11`, `14`.
+
+---
+
+## R42 — Cache invalidation is defined before the cache is added
+
+**Why:** the cache that nobody knows how to invalidate becomes a stale-data bug with a one-year half-life. Cache is never the sole authority for money/auth/quota.
+
+✅ `key = users:v1:${userId}`; TTL 60s + `await cache.del(key)` on write; metrics on hit/miss.
+❌ `set('user:'+id, user, 3600)` with no invalidation and no metrics; quota decision read from cache only.
+→ See `24a`, `24`, `11`.
+
+---
+
+## R43 — Liveness ≠ readiness; one shutdown coordinator
+
+**Why:** liveness that hits the DB restarts the pod when Redis hiccups; two signal handlers race and leave resources half-closed. Drain = flip readiness → wait → close.
+
+✅ Liveness returns 200 cheaply; readiness checks startup + deps; one `onSignal` coordinator marks readiness false, waits for LB drain, then closes pools.
+❌ `/healthz` checks DB + Redis + S3; two independent `process.on('SIGTERM')` handlers both closing the app.
+→ See `34`, `32`, `19`.
+
+---
+
+## R44 — Verify volatile facts before recommending
+
+**Why:** versions, package APIs, model IDs, install commands, and CLI flags drift fast. Recalling them from memory is how a skill ships stale advice that breaks installs and silently picks deprecated APIs.
+
+✅ "Let me check the lockfile / official docs before pinning a version" → cite the verified source.
+❌ "Use `@nestjs/common@10` with `useFactory: ...`" recalled from memory without checking the repo or docs.
+→ See `35`, `32`.
+
+---
+
+## R45 — Uploads go direct to the bucket; the app validates and signs
+
+**Why:** funneling bytes through your app is the most common path for unbounded growth, RCE via crafted content, and stored XSS. Presigned uploads keep the bytes out of the request handler.
+
+✅ Server issues a short-lived presigned `PUT` with capped size + fixed prefix + required content-type; client uploads directly; server records metadata after a HEAD confirm. Filenames are opaque internal keys.
+❌ `@UseInterceptors(FileInterceptor('file'))` with no size cap, trusting `Content-Type`, writing the user-supplied filename into the storage path.
+→ See `37`, `11`, `24`.
+
+---
+
+## R46 — Custom param decorators don't authenticate
+
+**Why:** decorators run per request and look like extraction. Putting auth, validation, or service calls inside one hides cross-cutting logic where reviewers won't look — and ties the request shape to identity decisions that belong in guards.
+
+✅ `@CurrentUser()` reads `request.user` populated by `AuthGuard`; throws `Unauthorized` only if the guard didn't run. Validation stays in pipes/DTOs.
+❌ `@CurrentUser()` calls `usersService.findByToken(req.headers.authorization)` to authenticate inline.
+→ See `38`, `12`, `09`.
+
+---
+
+## R47 — Webhook controller in `modules/`, signature in `integrations/`
+
+**Why:** signature verification is bytes-level and provider-specific (raw body, HMAC, replay window) — that's the integration's job. The handler decides what the event means for the domain — that's the feature module's job. Mixing them puts business logic where SDK code lives, and vice versa.
+
+✅ `integrations/stripe/stripe-webhook.client.ts` verifies signature on raw bytes. `modules/billing/webhooks/stripe-webhook.controller.ts` dedupes on `(provider, event_id)`, enqueues, returns `2xx`.
+❌ Stripe webhook controller in `integrations/stripe/` calling DB writes; or business handler verifying signatures inline.
+→ See `36`, `01`, `19`.
 
 ---
 

@@ -3,6 +3,7 @@
 ## TL;DR
 
 - Think before coding. State assumptions; don't silently guess.
+- Verify volatile facts (versions, package APIs, model IDs, command flags) against official docs and the repo — don't recall from memory.
 - Search for existing code before writing new code.
 - Fix root causes, not one observed phrase, prompt, or trigger string.
 - Prefer the smallest correct change. Don't build for hypothetical futures.
@@ -11,6 +12,7 @@
 - Ask before changing shared behavior or reusable contracts.
 - Turn requests into verifiable outcomes. Don't stop at "looks right".
 - When uncertain, ask early instead of implementing the wrong thing confidently.
+- Don't claim done until the impact surface, verification, and edge cases are closed out.
 
 ## Why this file exists
 
@@ -19,6 +21,7 @@ execution mistakes:
 
 - choosing one interpretation of an ambiguous request without saying so
 - writing a new helper/service when the repo already has one
+- recommending a version, package API, model ID, or install command from memory without verifying it against current docs or the repo
 - patching one observed input with a regex or hardcoded rule instead of fixing the class of bug
 - adding abstractions, config, or helpers before they are justified
 - fixing one local call site while leaving the rest of the impact surface inconsistent
@@ -61,6 +64,9 @@ the user when they affect the direction:
 - If there are multiple plausible interpretations, list them or ask.
 - If one approach is clearly simpler, prefer it and say why.
 - If the task wording conflicts with the existing codebase pattern, call that out before coding.
+- If any assumption is about a volatile fact (framework/runtime version, package API shape,
+  model ID, install command, CLI flag), verify it against official docs and the repo before
+  acting on it. See [`35-source-of-truth-freshness.md`](./35-source-of-truth-freshness.md).
 
 ### Good
 
@@ -108,7 +114,9 @@ shape, first inspect the existing codebase for something close enough to reuse.
 1. The same module or feature folder
 2. Module-local `utils/`, DTOs, repositories, services, guards, interceptors
 3. `common/`, `core/`, `integrations/`, or other repo-wide shared code
-4. Existing tests that show the intended pattern
+4. `events/` for an existing publisher/listener before adding a new event
+5. `commands/` for an existing CLI/cron task before adding a new one
+6. Existing tests that show the intended pattern
 
 ### Rules
 
@@ -183,6 +191,8 @@ Fix the underlying class of failure, not one observed wording, screenshot, or pr
 
 ### Good
 
+- Fix the role/permission check in the guard instead of `if (user.email === 'admin@example.com')`
+  for one customer's edge case.
 - Route behavior from an explicit command registry, parsed intent, or structured state instead of
   regex-matching one Burmese phrase.
 - Fix the shared planner/tool-selection logic instead of adding a special-case system-prompt rule
@@ -205,6 +215,8 @@ Reusing code is good. Quietly changing reusable code that other callers depend o
 - a function name, signature, return shape, or error behavior that other code may rely on
 - a reusable abstraction that needs branching or new flags to fit the new request
 - behavior that may require backward compatibility for existing callers
+- the global response envelope or pagination contract (see [`07-standard-responses.md`](./07-standard-responses.md), [`08-pagination-filters-sorting.md`](./08-pagination-filters-sorting.md)) — every endpoint and client depends on it
+- the global exception filter or error wire shape (see [`39-exception-filters.md`](./39-exception-filters.md), [`10-error-handling.md`](./10-error-handling.md)) — every consumer parses these
 
 ### Usually safe without asking
 
@@ -234,7 +246,7 @@ different behavior.
 When a fix touches shared code, contracts, names, DTOs, types, or behavior, the work is not done
 at the first passing call site. Search the whole impact surface and close it out deliberately.
 
-### Search order
+### Impact propagation order
 
 1. Direct call sites and imports
 2. Interfaces, DTOs, schemas, types, and validators tied to the changed behavior
@@ -313,6 +325,8 @@ Do not ask when:
 
 ## 10. Definition of done
 
+*Use this as the objective check before you tell the user the task is done.*
+
 Do not present the task as finished until all are true:
 
 1. The requested behavior is implemented.
@@ -329,10 +343,13 @@ Do not present the task as finished until all are true:
 
 ## Review checklist for yourself
 
+*Use this as a doubt scan after the code is written, before you hand it off.*
+
 Before you stop, check:
 
 - Did I make any silent assumptions that should have been stated?
 - Did I check for existing reusable code before adding new code?
+- Did I verify any version, package API, model ID, install command, or CLI flag I cited against current docs or the repo, instead of recalling from memory?
 - If this touched a list endpoint, did I inspect existing pagination usage before changing it?
 - Did I solve the class of bug, or only one literal example?
 - Did I add any helper, abstraction, or config that is not yet justified?
@@ -344,6 +361,8 @@ Before you stop, check:
 
 ## Anti-patterns
 
+*Watch for these as early-warning signals before or while you write code.*
+
 - "I'll just make it flexible while I'm here."
 - "I'll write a new helper; searching the repo will take longer."
 - "I'll just regex-match this one phrase" when the behavior is broader than one phrase.
@@ -353,6 +372,7 @@ Before you stop, check:
 - "I'll tweak the shared util quickly" without checking who else relies on it.
 - "One call site is fixed, that's probably enough" without searching the rest.
 - "Tests are unnecessary because the code is simple" when behavior changed.
+- "I remember the version / install command / model ID / API shape" without verifying against current docs or the repo.
 - "It should work" with no verification.
 
 ## How this connects to the rest of the skill
@@ -361,3 +381,8 @@ Before you stop, check:
 - Use `05-thinking-decision-trees.md` for architectural tradeoffs and placement.
 - Use topic references (`09`, `10`, `11`, `23`, etc.) for implementation rules.
 - Use `29-code-review-checklist.md` when reviewing someone else's diff.
+- Use `30-code-review-anti-patterns.md` for the catalog form of these anti-patterns.
+- Use `31-rules-rationale-examples.md` for cross-cut rule rationale and quick examples.
+- Use `35-source-of-truth-freshness.md` before recommending versions, package APIs, model IDs, or any volatile fact — verify against official docs and the repo, do not recall from memory.
+- Use `32-modern-nestjs-stack.md` when modernizing or starting a service — decision checklist, not a frozen version matrix.
+- Use `38-decorators-scopes-dynamic-modules.md` when reaching for custom decorators, request-scoped providers, or `forwardRef` — these are common silent mistakes.

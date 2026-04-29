@@ -22,7 +22,7 @@ Jump directly to the anti-pattern relevant to the diff you are reviewing.
 **API shape & errors**
 - A4 — Returning `{ success: false }` with HTTP 200
 - A28 — Response contract varies per endpoint
-- A29 — Missing `headersSent` guard in global filter
+- A29 — Missing `headersSent` / `host.getType()` guards in global filter
 - A10 — Silent catch
 - A11 — Bare `throw e` or no-op try/catch
 
@@ -48,7 +48,7 @@ Jump directly to the anti-pattern relevant to the diff you are reviewing.
 - A12 — `console.log` in app code
 
 **Database schema**
-- A14 — Float money
+- A14 — Money as float (not integer cents)
 - A15 — Timestamp without tz
 - A16 — Missing FK index
 - A17 — Cross-module DB read
@@ -191,7 +191,12 @@ export class PaymentController {
   @Get(':id')
   async get(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     const p = await this.repo.findById(id);
-    if (p.userId !== user.id) throw new ForbiddenException({ code: 'AUTH.INSUFFICIENT_PERMISSION' });
+    if (p.userId !== user.id) {
+      throw new ForbiddenException({
+        code: 'AUTH.INSUFFICIENT_PERMISSION',
+        message: 'You do not own this resource.',
+      });
+    }
     return p;
   }
 }
@@ -232,7 +237,12 @@ const sql = `SELECT * FROM payments ORDER BY ${req.query.sortBy} LIMIT 50`;
 **Good**
 ```ts
 const allowed = new Set(['createdAt', 'amount', 'status']);
-if (!allowed.has(q.sort)) throw new BadRequestException({ code: 'QUERY.INVALID_SORT_FIELD' });
+if (!allowed.has(q.sort)) {
+  throw new BadRequestException({
+    code: 'QUERY.INVALID_SORT_FIELD',
+    message: 'Sort field is not allowed.',
+  });
+}
 const sql = `SELECT * FROM payments ORDER BY ${q.sort} LIMIT 50`;
 ```
 
@@ -286,14 +296,17 @@ See `10`.
 try { return await a(); } catch (e) { throw e; }
 ```
 
-**Good** (remove the try/catch, or add context)
+**Good** (remove the try/catch, or add context — preserve cause via `Error.cause`, never via stringification on the wire)
 ```ts
 return await a();
 // or
 try {
   return await a();
 } catch (e) {
-  throw new AppException(500, { code: 'A.FAILED', message: 'A failed', details: { cause: String(e) } });
+  throw new InternalServerErrorException(
+    { code: 'A.FAILED', message: 'A failed' },
+    { cause: e },                       // logged server-side; not on the wire
+  );
 }
 ```
 
@@ -334,11 +347,12 @@ See `21`, `11`.
 
 ---
 
-## A14 — Float money
+## A14 — Money as float (not integer cents)
 
 **Bad**
 ```sql
-amount numeric(10,2) NOT NULL
+amount double precision NOT NULL                      -- IEEE 754 float, lossy
+-- or numeric(10,2) read into JS as a `number`, then accumulated with `+`
 ```
 ```ts
 total = items.reduce((s, i) => s + i.price, 0)  // float accumulation bug
@@ -480,14 +494,14 @@ See `19`.
 import Anthropic from '@anthropic-ai/sdk';
 async summarize(text: string) {
   const a = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  return a.messages.create({ model: 'claude-latest', ... });
+  return a.messages.create({ model: 'claude-opus-4-7', ... });
 }
 ```
 
 **Good**
 ```ts
 async summarize(text: string) {
-  return this.llm.call({ model: 'claude-sonnet-4-6', messages: [...] });
+  return this.llm.call({ model: env.LLM_SUMMARY_MODEL, messages: [...] });
 }
 ```
 
@@ -606,24 +620,25 @@ See `07`.
 
 ---
 
-## A29 — Missing `headersSent` guard in global filter
+## A29 — Missing `headersSent` / `host.getType()` guards in global filter
 
 **Bad**
 ```ts
 @Catch()
 catch(e, host) {
   host.switchToHttp().getResponse().status(500).json({ ... });  // crash mid-stream
-}
+}                                                                // and crashes outside HTTP
 ```
 
 **Good**
 ```ts
+if (host.getType() !== 'http') throw e;        // BullMQ / WS / RPC contexts
 const res = host.switchToHttp().getResponse();
-if (res.headersSent) return;
+if (res.headersSent) return;                   // streaming already flushed
 res.status(status).json({ code, message, details, traceId });
 ```
 
-See `10`, `27`.
+See `10`, `27`, `39`.
 
 ---
 
@@ -675,27 +690,34 @@ Gateway records every call with tokens + cost + outcome (`28`).
 
 ---
 
-## A33 — Webhook without signature verification
+## A33 — Webhook without signature verification (or with sync work in the handler)
 
 **Bad**
 ```ts
 @Post('webhook')
 async handle(@Body() body: any) {
-  if (body.type === 'charge.succeeded') await this.recordPayment(body);
+  if (body.type === 'charge.succeeded') await this.recordPayment(body); // no verify, no dedupe, sync work
 }
 ```
 
-**Good**
+**Good (shape — adapt to the installed provider SDK and `@nestjs/core` version)**
 ```ts
 @Post('webhook')
-async handle(@Req() req: Request) {
-  const event = stripe.webhooks.constructEvent(req.rawBody, req.headers['stripe-signature'], secret);
-  if (await this.events.wasProcessed(event.id)) return;  // dedupe
-  // ... handle + mark
+async handle(@Req() req: RawBodyRequest<Request>) {
+  // 1. Verify on raw bytes (algorithm per provider; constant-time compare).
+  const event = this.stripeWebhookClient.verify(req.rawBody!, req.headers['stripe-signature']);
+
+  // 2. Insert-then-process; unique index on (provider, event_id) makes retries no-ops.
+  const inserted = await this.webhookEvents.tryInsert({ provider: 'stripe', eventId: event.id, type: event.type });
+  if (!inserted) return; // duplicate → still 2xx
+
+  // 3. Enqueue and ack fast; the worker rehydrates tenant context and does the real work.
+  await this.queue.add(event.type, { provider: 'stripe', eventId: event.id, tenantId: this.resolveTenant(event) });
+  // implicit 2xx — even for unhandled event types
 }
 ```
 
-See `11`, `18`.
+See `36`, `11`, `18`, `19`, `33`.
 
 ---
 

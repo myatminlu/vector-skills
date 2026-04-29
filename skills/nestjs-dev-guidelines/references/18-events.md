@@ -38,9 +38,9 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
   imports: [EventEmitterModule.forRoot({
-    wildcard: true,      // support 'user.*' listeners
-    delimiter: '.',      // 'user.created' style
-    verboseMemoryLeak: true,
+    wildcard: true,                    // enable only if you need 'user.*' listeners; small overhead
+    delimiter: '.',                    // 'user.created' style
+    verboseMemoryLeak: !isProduction,  // dev/staging only — noisy in prod
   })],
 })
 export class AppModule {}
@@ -96,6 +96,7 @@ export class SendWelcomeEmailListener {
 - Listener errors don't propagate back to the publisher. Log them.
 - No ordering guarantees across listeners.
 - No persistence — if the process crashes, in-flight events are lost.
+- In-process events are intentionally simpler than cross-service: no envelope, no `id`/`traceId`/`version`. If you need any of those, promote the event through the outbox so it gets the full envelope downstream.
 
 ### For reliability: outbox pattern
 
@@ -118,7 +119,7 @@ You update the DB and emit an event. One succeeds, one fails. Which?
 
 ```sql
 CREATE TABLE outbox (
-  id uuid PRIMARY KEY DEFAULT gen_uuid_v7(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   aggregate_type text NOT NULL,    -- 'user', 'payment', 'order'
   aggregate_id text NOT NULL,
   event_type text NOT NULL,        -- 'user.created'
@@ -131,19 +132,57 @@ CREATE TABLE outbox (
 CREATE INDEX idx_outbox_unpublished ON outbox (created_at) WHERE published_at IS NULL;
 ```
 
+> `uuidv7()` requires Postgres 18+, the `pg_uuidv7` extension on older versions, or app-side generation. See [`13-database-design.md`](./13-database-design.md) for the project-wide convention.
+
 ### Write in the same transaction
 
+The domain write and the outbox insert must share **one** connection so they commit or roll back together. Use a checked-out client (or your ORM's transaction API — see [`14-database-orm-patterns.md`](./14-database-orm-patterns.md)).
+
 ```ts
-await this.pool.query('BEGIN');
+// Plain pg — share a single client across the whole transaction
+const client = await this.pool.connect();
 try {
-  const { rows: [user] } = await this.pool.query(`INSERT INTO users ... RETURNING *`);
-  await this.pool.query(
+  await client.query('BEGIN');
+  const { rows: [user] } = await client.query(
+    `INSERT INTO users (email, name) VALUES ($1, $2) RETURNING *`,
+    [dto.email, dto.name],
+  );
+  await client.query(
     `INSERT INTO outbox (aggregate_type, aggregate_id, event_type, payload) VALUES ($1, $2, $3, $4)`,
     ['user', user.id, 'user.created', { id: user.id, email: user.email }],
   );
-  await this.pool.query('COMMIT');
-} catch (e) { await this.pool.query('ROLLBACK'); throw e; }
+  await client.query('COMMIT');
+} catch (e) {
+  await client.query('ROLLBACK');
+  throw e;
+} finally {
+  client.release();
+}
 ```
+
+ORM equivalents:
+
+```ts
+// TypeORM
+await this.dataSource.transaction(async (manager) => {
+  const user = await manager.save(User, dto);
+  await manager.insert(Outbox, {
+    aggregateType: 'user', aggregateId: user.id,
+    eventType: 'user.created', payload: { id: user.id, email: user.email },
+  });
+});
+
+// Prisma
+await this.prisma.$transaction(async (tx) => {
+  const user = await tx.user.create({ data: dto });
+  await tx.outbox.create({ data: {
+    aggregateType: 'user', aggregateId: user.id,
+    eventType: 'user.created', payload: { id: user.id, email: user.email },
+  }});
+});
+```
+
+Calling `pool.query()` directly for each statement is **wrong** — each call may pick a different pooled connection, so `BEGIN`/`COMMIT` and the writes won't share a transaction.
 
 ### Poller (background job)
 
@@ -191,14 +230,24 @@ Every event handler must be idempotent (running twice = same outcome).
 
 ```ts
 async handle(event: PaymentCapturedEvent) {
-  // Dedupe by event id or aggregateId+type
-  if (await this.repo.hasProcessed(event.id)) return;
-  await this.loyalty.award(event.aggregateId, event.data.amount);
-  await this.repo.markProcessed(event.id);
+  // Side effect + dedupe marker must commit together, otherwise a crash between
+  // them will replay the side effect on retry.
+  await this.dataSource.transaction(async (tx) => {
+    if (await this.inbox.hasProcessed(tx, event.id)) return;
+    await this.loyalty.award(tx, event.aggregateId, event.data.amount);
+    await this.inbox.markProcessed(tx, event.id);
+  });
 }
 ```
 
-Use a dedicated `event_inbox(event_id)` table or a naturally-keyed table that makes retry safe.
+Two acceptable shapes:
+
+1. **Inbox table + transactional side effect** — wrap the dedupe check, side effect, and marker insert in one DB transaction (shown above).
+2. **Naturally idempotent action** — e.g. `INSERT ... ON CONFLICT DO NOTHING`, an `UPSERT` keyed by `event.id`, or setting an absolute state instead of incrementing. No inbox needed.
+
+Avoid: `if-not-processed → side effect → mark processed` as three separate, non-transactional steps. A crash between step 2 and step 3 means the next retry repeats the side effect.
+
+Use a dedicated `event_inbox(event_id PRIMARY KEY)` table when the side effect can't be made naturally idempotent.
 
 ## Ordering
 
@@ -241,10 +290,11 @@ In the event folder, keep a `README.md`:
 Emitted when a new user account is created.
 
 ## Payload
-| field | type | notes |
-| id | string | UUIDv7 |
+| field | type   | notes     |
+| ----- | ------ | --------- |
+| id    | string | UUIDv7    |
 | email | string | lowercased |
-| name | string | |
+| name  | string |           |
 
 ## Published by
 - `UserService.create`
@@ -295,7 +345,7 @@ of these failing leaves user-created-but-no-welcome state.
 - [ ] Event naming: `subject.verb-past-tense`
 - [ ] Event class / schema is versioned
 - [ ] Payload is a snapshot, not a reference requiring lookup (unless intentional)
-- [ ] Handlers are idempotent (dedupe key or naturally idempotent action)
+- [ ] Handlers are idempotent: dedupe-marker write commits in the same transaction as the side effect, or the action is naturally idempotent (`ON CONFLICT DO NOTHING`, absolute-state upsert)
 - [ ] For durability needs: outbox pattern, not fire-and-forget
 - [ ] `traceId` propagated from publisher → event → listener
 - [ ] New event documented in `events/<name>/README.md`

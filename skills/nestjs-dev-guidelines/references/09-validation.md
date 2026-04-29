@@ -18,16 +18,53 @@ one with the highest ROI.
 
 ```ts
 // main.ts
+import { UnprocessableEntityException, ValidationError, ValidationPipe } from '@nestjs/common';
+
 app.useGlobalPipes(
   new ValidationPipe({
     whitelist: true,              // strip properties not in DTO
     forbidNonWhitelisted: true,   // error on unknown properties
+    forbidUnknownValues: true,    // reject `@Body()` of `undefined` / non-object
     transform: true,              // auto-convert types (string → number, Date, etc.)
     transformOptions: { enableImplicitConversion: true },
     stopAtFirstError: false,      // collect all errors, not just the first
     validationError: { target: false, value: false }, // don't echo user input in error
+    exceptionFactory: (errors: ValidationError[]) =>
+      new UnprocessableEntityException({
+        code: 'VALIDATION.FAILED',
+        message: 'Request validation failed.',
+        details: flattenValidationErrors(errors),
+      }),
   }),
 );
+```
+
+`exceptionFactory` is what makes class-validator produce **422 + `VALIDATION.FAILED`** instead of Nest's
+default 400. The status, code, and `details` shape stay aligned with `10-error-handling.md` and
+`39-exception-filters.md`. `flattenValidationErrors` walks nested `ValidationError` trees:
+
+```ts
+// common/validation/flatten-validation-errors.ts
+import type { ValidationError } from '@nestjs/common';
+
+export interface FieldError {
+  field: string;                              // dotted path, e.g. "address.country"
+  constraints: Record<string, string>;        // { isEmail: "..." }
+}
+
+export function flattenValidationErrors(
+  errors: ValidationError[],
+  parent = '',
+): FieldError[] {
+  return errors.flatMap((e) => {
+    const field = parent ? `${parent}.${e.property}` : e.property;
+    const own: FieldError[] = e.constraints
+      ? [{ field, constraints: e.constraints }]
+      : [];
+    const nested = e.children?.length ? flattenValidationErrors(e.children, field) : [];
+    return [...own, ...nested];
+  });
+}
 ```
 
 ## DTO patterns — class-validator
@@ -116,12 +153,12 @@ export class CreateUserDto {
 import { registerDecorator, ValidationOptions } from 'class-validator';
 import { isValidPhoneNumber } from 'libphonenumber-js';
 
-export function IsPhoneE164(options?: ValidationOptions): PropertyDecorator {
-  return (object, propertyName) => {
+export function IsPhoneE164(options?: ValidationOptions) {
+  return (object: object, propertyName: string) => {
     registerDecorator({
       name: 'isPhoneE164',
       target: object.constructor,
-      propertyName: propertyName as string,
+      propertyName,
       options: { message: 'Must be a valid E.164 phone number', ...options },
       validator: { validate: (v) => typeof v === 'string' && isValidPhoneNumber(v) },
     });
@@ -131,18 +168,21 @@ export function IsPhoneE164(options?: ValidationOptions): PropertyDecorator {
 
 ### Frequently used decorators
 
-| Decorator | Purpose |
-|---|---|
-| `@IsString()`, `@IsInt()`, `@IsNumber()`, `@IsBoolean()`, `@IsDate()` | Primitives |
-| `@IsEmail()`, `@IsUUID()`, `@IsUrl()`, `@IsJWT()` | Formats |
-| `@IsEnum(MyEnum)` | Enum |
-| `@IsArray()`, `@ArrayMinSize(n)`, `@ArrayMaxSize(n)`, `@ArrayUnique()` | Arrays |
-| `@IsOptional()` | Nullable |
-| `@ValidateNested()` + `@Type(() => Dto)` | Nested objects |
-| `@Min(n)`, `@Max(n)`, `@Length(min, max)`, `@MaxLength(n)` | Bounds |
-| `@Matches(regex)` | Regex |
-| `@IsDateString()` | ISO 8601 string |
-| `@Transform(({ value }) => ...)` | Custom pre-validation transform |
+All decorators come from `class-validator` unless the **Source** column says otherwise.
+
+| Decorator | Purpose | Source |
+|---|---|---|
+| `@IsString()`, `@IsInt()`, `@IsNumber()`, `@IsBoolean()`, `@IsDate()` | Primitives | `class-validator` |
+| `@IsEmail()`, `@IsUUID()`, `@IsUrl()`, `@IsJWT()` | Formats | `class-validator` |
+| `@IsEnum(MyEnum)` | Enum | `class-validator` |
+| `@IsArray()`, `@ArrayMinSize(n)`, `@ArrayMaxSize(n)`, `@ArrayUnique()` | Arrays | `class-validator` |
+| `@IsOptional()` | Nullable | `class-validator` |
+| `@ValidateNested()` | Nested objects | `class-validator` |
+| `@Min(n)`, `@Max(n)`, `@Length(min, max)`, `@MaxLength(n)` | Bounds | `class-validator` |
+| `@Matches(regex)` | Regex | `class-validator` |
+| `@IsDateString()` | ISO 8601 string | `class-validator` |
+| `@Type(() => Dto)` | Type hint for nested / coerced values | `class-transformer` |
+| `@Transform(({ value }) => ...)` | Custom pre-validation transform | `class-transformer` |
 
 ## Zod — env and runtime JSON
 
@@ -152,6 +192,11 @@ export function IsPhoneE164(options?: ValidationOptions): PropertyDecorator {
 // core/config/env.ts
 import { z } from 'zod';
 
+const csvUrls = z
+  .string()
+  .transform((s) => s.split(',').map((x) => x.trim()).filter(Boolean))
+  .pipe(z.array(z.string().url()).min(1));
+
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -159,7 +204,7 @@ export const envSchema = z.object({
   REDIS_URL: z.string().url().optional(),
   JWT_SECRET: z.string().min(32),
   ANTHROPIC_API_KEY: z.string().startsWith('sk-ant-'),
-  ALLOWED_ORIGINS: z.string().transform((s) => s.split(',').map((x) => x.trim())),
+  ALLOWED_ORIGINS: csvUrls,
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
 });
 
@@ -168,6 +213,7 @@ export type Env = z.infer<typeof envSchema>;
 export function loadEnv(): Env {
   const parsed = envSchema.safeParse(process.env);
   if (!parsed.success) {
+    // Logger is not bootstrapped yet — plain console + non-zero exit is intentional.
     // eslint-disable-next-line no-console
     console.error('Invalid environment:', parsed.error.flatten().fieldErrors);
     process.exit(1);
@@ -196,7 +242,13 @@ export class StripeWebhookService {
   async handle(rawBody: unknown) {
     const result = stripePaymentIntentSchema.safeParse(rawBody);
     if (!result.success) {
-      throw new BadRequestException({ code: 'WEBHOOK.MALFORMED', details: result.error.issues });
+      // 400, not 422: a malformed external payload is a transport-level fault, not a
+      // user-input semantic failure. See `10-error-handling.md` and `36-webhooks.md`.
+      throw new BadRequestException({
+        code: 'WEBHOOK.MALFORMED',
+        message: 'Webhook payload did not match the expected schema.',
+        details: { issues: result.error.issues },
+      });
     }
     const event = result.data; // fully typed
     // ...
@@ -233,7 +285,8 @@ Never trust a transform to replace validation. Sanitize then validate.
 
 ## Error shape
 
-Validation failures throw `BadRequestException`, caught by your global filter and rendered as:
+The `exceptionFactory` configured in **Global setup** throws an `UnprocessableEntityException`
+(HTTP **422**), caught by the global filter (`39-exception-filters.md`) and rendered as:
 
 ```json
 {
@@ -241,14 +294,22 @@ Validation failures throw `BadRequestException`, caught by your global filter an
   "message": "Request validation failed.",
   "details": [
     { "field": "email", "constraints": { "isEmail": "email must be a valid email" } },
-    { "field": "password", "constraints": { "length": "password must be longer than or equal to 12 characters" } }
+    { "field": "address.country", "constraints": { "length": "country must be exactly 2 characters" } }
   ],
   "traceId": "req_..."
 }
 ```
 
-Map the default NestJS validation error to this shape in your filter or a custom
-`exceptionFactory` in `ValidationPipe`.
+- HTTP status: **422 Unprocessable Entity** — body is well-formed JSON, semantics are wrong.
+- `code`: stable `VALIDATION.FAILED` (dotted, matches the registry in `10-error-handling.md`).
+- `details`: array of `{ field, constraints }`; `field` is a dotted path so clients can map
+  errors to nested form inputs.
+- `traceId`: added by the global filter, never emitted by the pipe directly.
+
+> **Why 422, not 400?** 400 means "I cannot parse this request" (malformed JSON, missing
+> `Content-Type`); 422 means "I parsed it, but the data is semantically invalid." Validation
+> is the second case. Webhook *payload* parsing failures stay 400 — that's a transport
+> contract, not user input.
 
 ## Good vs bad
 
@@ -267,10 +328,29 @@ async create(@Body() dto: CreateUserDto): Promise<User> {
 @Post()
 async create(@Body() body: any): Promise<User> {          // ❌ no DTO
   if (!body.email || !body.email.includes('@')) {         // ❌ manual validation
-    throw new BadRequestException('bad email');
+    throw new BadRequestException('bad email');           // ❌ wrong status (400 vs 422) and free-form message
   }
   return this.users.create(body);                         // ❌ mass assignment risk
 }
+```
+
+### Path params
+
+A route with a single primitive id is the only place a non-DTO param is acceptable — but it
+**still gets a pipe**, never a raw `string`:
+
+```ts
+// ✅
+@Get(':id')
+findOne(@Param('id', ParseUUIDPipe) id: string): Promise<User> { ... }
+
+// ✅
+@Get(':id')
+findOne(@Param('id', ParseIntPipe) id: number): Promise<User> { ... }
+
+// ❌ no pipe — accepts "; DROP TABLE users", typos, anything
+@Get(':id')
+findOne(@Param('id') id: string) { ... }
 ```
 
 ## Anti-patterns
@@ -281,16 +361,19 @@ async create(@Body() body: any): Promise<User> {          // ❌ no DTO
 - Using class-validator for env vars. Use Zod — coercion and unions are cleaner.
 - Using Zod for HTTP DTOs. Lose Swagger auto-docs; use class-validator.
 - Mixing validation and authorization in the DTO (e.g., "userId must equal current user").
+- Returning **400** from the validation pipe. The contract here is **422 + `VALIDATION.FAILED`**; configure the `exceptionFactory` so it cannot drift.
+- Echoing user input back inside `details` (`value: false` in `validationError` keeps the pipe from doing this for you).
 
 ## Code review checklist
 
-- [ ] Every controller input parameter has a DTO (no `any`/`object`/raw primitives except `:id`)
-- [ ] `ValidationPipe` global with `whitelist`, `forbidNonWhitelisted`, `transform`
-- [ ] Query DTOs use `@Type(() => Number)` for numeric params
-- [ ] Nested DTOs use `@ValidateNested()` + `@Type(() => ChildDto)`
-- [ ] Environment is Zod-validated at boot; process exits on invalid env
-- [ ] External webhook bodies are Zod-parsed before use
-- [ ] No manual `if (!x) throw` validation logic in controllers/services
+- [ ] Every controller input has a DTO. Single `:id`/`:uuid` params use `ParseUUIDPipe` or `ParseIntPipe` — never raw `@Param('id') id: string`.
+- [ ] `ValidationPipe` is registered globally with `whitelist`, `forbidNonWhitelisted`, `forbidUnknownValues`, `transform`, and an `exceptionFactory` that returns **422 + `VALIDATION.FAILED`**.
+- [ ] Query DTOs use `@Type(() => Number)` for numeric params.
+- [ ] Nested DTOs use `@ValidateNested()` + `@Type(() => ChildDto)`.
+- [ ] Environment is Zod-validated at boot; process exits on invalid env.
+- [ ] External webhook bodies are Zod-parsed before use; malformed payloads → **400 + `WEBHOOK.MALFORMED`**.
+- [ ] No manual `if (!x) throw` validation logic in controllers/services.
+- [ ] Error responses match `{ code, message, details?, traceId }` from `07-standard-responses.md`.
 
 ## See also
 

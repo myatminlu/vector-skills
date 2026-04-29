@@ -112,7 +112,7 @@ Each module owns its tables. Other modules must go through the owner's service.
 
 ```ts
 // modules/order/order.service.ts
-import { Inject, Injectable } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
 import { UserService } from '../user/index.js';
 import { PaymentService } from '../payment/index.js';
 
@@ -125,7 +125,12 @@ export class OrderService {
 
   async create(userId: string, amount: number) {
     const user = await this.users.findById(userId);
-    if (!user.isActive) throw new ForbiddenException('USER.INACTIVE');
+    if (!user.isActive) {
+      throw new ForbiddenException({
+        code: 'USER.INACTIVE',
+        message: 'User is inactive.',
+      });
+    }
     const payment = await this.payments.charge(user, amount);
     // ... create order row
   }

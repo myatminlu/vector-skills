@@ -4,7 +4,7 @@
 
 - Stream LLM output to the client via **SSE** (`text/event-stream`) — simpler than WebSockets, works through HTTP proxies, native browser `EventSource` support.
 - Cancel-aware: when the client disconnects, abort the upstream LLM call. Don't keep burning tokens.
-- Emit typed events: `chunk`, `tool_call`, `usage`, `done`, `error`. Never invent ad-hoc shapes.
+- Emit typed events: `chunk`, `tool_call`, `tool_result`, `usage`, `done`, `error`. Never invent ad-hoc shapes.
 - Heartbeat every 15s (comment lines) so proxies don't close idle connections.
 - The global exception filter **must not** write to a response that's already streaming — honor `res.headersSent`.
 
@@ -40,17 +40,29 @@ data: {"delta":" world"}
 
 event: done
 id: 2
-data: {"usage":{"inputTokens":120,"outputTokens":2},"costCents":1}
+data: {"usage":{"inputTokens":120,"outputTokens":2,"totalTokens":122},"costMicroUsd":"12500"}
 ```
 
 Two newlines end an event. Lines starting with `:` are comments (used for heartbeats).
 
 ## Controller
 
+> Why raw `@Res()` instead of Nest's `@Sse()` decorator? `@Sse()` returns
+> `Observable<MessageEvent>` and gives the framework full control of the response — you can't
+> set custom headers before the first event, can't observe `req.on('close')` cleanly, and
+> can't write a `:hb\n\n` heartbeat comment line. For LLM streams that need cancellation,
+> heartbeats, and `X-Accel-Buffering` we use raw `@Res()`. For trivial event feeds, `@Sse()`
+> is fine.
+
 ```ts
 // modules/conversation/conversation.controller.ts
-import { Controller, Post, Body, Res, Req } from '@nestjs/common';
+import { Controller, Post, Body, Res, Req, Param, UseGuards } from '@nestjs/common';
 import type { Response, Request } from 'express';
+import { AuthGuard } from '../../common/guards/auth.guard';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthUser } from '../../common/types/auth-user';
+import { SendMessageDto } from './dto/send-message.dto';
+import { ConversationService } from './conversation.service';
 
 @Controller({ path: 'conversations/:conversationId/stream', version: '1' })
 @UseGuards(AuthGuard)
@@ -76,33 +88,53 @@ export class StreamController {
     const abortController = new AbortController();
     req.on('close', () => abortController.abort());
 
-    // 3. Heartbeat every 15s
+    // 3. Heartbeat every 15s. Use `res.writable`, not `!res.writableEnded` —
+    //    a disconnected socket is destroyed but writableEnded stays false until we call .end().
     const heartbeat = setInterval(() => {
-      if (!res.writableEnded) res.write(':hb\n\n');
+      if (res.writable) res.write(':hb\n\n');
     }, 15_000);
 
     try {
       let index = 0;
       for await (const event of this.service.stream(user.id, conversationId, dto, abortController.signal)) {
-        if (res.writableEnded) break;
+        if (!res.writable) break;
         res.write(`event: ${event.type}\n`);
         res.write(`id: ${index++}\n`);
         res.write(`data: ${JSON.stringify(event.data)}\n\n`);
       }
     } catch (e) {
-      if (!res.writableEnded) {
+      if (res.writable) {
         res.write(`event: error\n`);
         res.write(`data: ${JSON.stringify({ code: 'LLM.STREAM_ERROR', message: 'Stream failed' })}\n\n`);
       }
     } finally {
       clearInterval(heartbeat);
-      if (!res.writableEnded) res.end();
+      if (res.writable) res.end();
     }
   }
 }
 ```
 
 ## Service generator
+
+```ts
+// modules/conversation/types.ts
+export interface UsageInfo {
+  inputTokens: number;                 // UNCACHED input only (non-overlapping with cache buckets); see `28`
+  outputTokens: number;
+  totalTokens: number;                 // sum of all four buckets
+  cacheReadInputTokens?: number;       // prompt-cache HIT (discounted)
+  cacheWriteInputTokens?: number;      // prompt-cache WRITE (premium on Anthropic)
+}
+
+export type StreamEvent =
+  | { type: 'chunk';       data: { delta: string } }
+  | { type: 'tool_call';   data: { id: string; name: string; arguments: unknown } }
+  | { type: 'tool_result'; data: { id: string; result: unknown } }
+  | { type: 'usage';       data: UsageInfo }
+  | { type: 'done';        data: { usage: UsageInfo | null; costMicroUsd: string } }
+  | { type: 'error';       data: { code: string; message: string } };
+```
 
 ```ts
 async *stream(
@@ -117,31 +149,78 @@ async *stream(
   // stream from LLM
   let buffer = '';
   let usage: UsageInfo | null = null;
+  const started = Date.now();
+  const traceId = this.cls.get('traceId');
 
   try {
     for await (const chunk of this.llm.stream({
-      model: 'claude-sonnet-4-6',
+      model: env.LLM_STREAM_MODEL,
       messages: await this.history(conversationId),
-      metadata: { userId, traceId: this.logger.traceId },
+      // traceId comes from request-scoped CLS (e.g. nestjs-cls), not a logger field
+      metadata: { userId, traceId },
     }, { signal })) {
       if (chunk.type === 'text_delta') {
         buffer += chunk.text;
         yield { type: 'chunk', data: { delta: chunk.text } };
       } else if (chunk.type === 'tool_call') {
-        yield { type: 'tool_call', data: chunk };
+        yield {
+          type: 'tool_call',
+          data: { id: chunk.id, name: chunk.name, arguments: chunk.arguments },
+        };
+      } else if (chunk.type === 'tool_result') {
+        yield {
+          type: 'tool_result',
+          data: { id: chunk.id, result: chunk.result },
+        };
       } else if (chunk.type === 'usage') {
         usage = chunk.usage;
+        // emit usage as its own event so clients can render it before `done`
+        yield { type: 'usage', data: usage };
       }
     }
 
     // persist assistant message after the stream completes
     await this.messages.insert({ conversationId, role: 'assistant', content: buffer, userId });
 
+    let costMicroUsd = 0n;
     if (usage) {
-      await this.usage.record({ userId, model: '...', ...usage });
-      yield { type: 'done', data: { usage, costCents: this.cost(usage) } };
+      costMicroUsd = this.cost(usage); // bigint
+      // record() enqueues; the worker writes the row + updates the rollup. See `28`.
+      await this.usage.record({
+        userId,
+        provider: this.llm.providerFor(env.LLM_STREAM_MODEL).name,
+        model: env.LLM_STREAM_MODEL,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cacheReadInputTokens: usage.cacheReadInputTokens ?? 0,
+        cacheWriteInputTokens: usage.cacheWriteInputTokens ?? 0,
+        costMicroUsd,
+        latencyMs: Date.now() - started,
+        outcome: 'success',
+        traceId,
+        feature: 'chat.stream',
+      });
     }
+    // JSON has no bigint — serialize costMicroUsd as a string on the wire.
+    yield { type: 'done', data: { usage, costMicroUsd: costMicroUsd.toString() } };
   } catch (e) {
+    // Always meter what the provider already charged us for, even on abort/error.
+    if (usage) {
+      await this.usage.record({
+        userId,
+        provider: this.llm.providerFor(env.LLM_STREAM_MODEL).name,
+        model: env.LLM_STREAM_MODEL,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cacheReadInputTokens: usage.cacheReadInputTokens ?? 0,
+        cacheWriteInputTokens: usage.cacheWriteInputTokens ?? 0,
+        costMicroUsd: this.cost(usage),
+        latencyMs: Date.now() - started,
+        outcome: signal.aborted ? 'aborted' : 'error',
+        traceId,
+        feature: 'chat.stream',
+      });
+    }
     if (signal.aborted) {
       // client disconnected; persist partial message + stop silently
       if (buffer) await this.messages.insert({ conversationId, role: 'assistant', content: buffer, userId, partial: true });
@@ -161,8 +240,8 @@ Agree on a small vocabulary:
 | `chunk` | `{ delta: string }` | text token |
 | `tool_call` | `{ id, name, arguments }` | the model is calling a tool |
 | `tool_result` | `{ id, result }` | the server returned a tool result back to the model |
-| `usage` | `{ inputTokens, outputTokens, totalTokens }` | per-call usage (sent near the end) |
-| `done` | `{ usage, costCents }` | final event — stream completed successfully |
+| `usage` | `{ inputTokens, outputTokens, totalTokens, cacheReadInputTokens?, cacheWriteInputTokens? }` | per-call usage (sent near the end) |
+| `done` | `{ usage, costMicroUsd }` | final event — stream completed successfully (`costMicroUsd` serialized as string since JSON has no `bigint`) |
 | `error` | `{ code, message }` | fatal — stream ends |
 
 Don't invent per-endpoint shapes. Consumers can share a single parser.
@@ -171,12 +250,26 @@ Don't invent per-endpoint shapes. Consumers can share a single parser.
 
 ```ts
 const source = new EventSource('/v1/conversations/c1/stream', { withCredentials: true });
+
 source.addEventListener('chunk', (e) => {
-  const { delta } = JSON.parse(e.data);
+  const { delta } = JSON.parse((e as MessageEvent).data);
   appendToTextArea(delta);
 });
-source.addEventListener('done', (e) => { source.close(); });
-source.addEventListener('error', (e) => {
+
+source.addEventListener('tool_call', (e) => {
+  const call = JSON.parse((e as MessageEvent).data);
+  showToolCallChip(call);
+});
+
+source.addEventListener('usage', (e) => {
+  const usage = JSON.parse((e as MessageEvent).data);
+  updateUsageBadge(usage);
+});
+
+// IMPORTANT: close on terminal events. Otherwise the browser auto-reconnects on `error`
+// and triggers another billed LLM call.
+source.addEventListener('done', () => source.close());
+source.addEventListener('error', () => {
   showErrorToast();
   source.close();
 });
@@ -193,7 +286,13 @@ Note: `EventSource` doesn't support `POST` with a body. Common workarounds:
 If the client reads slower than the server writes (big payloads), Node buffers and RSS climbs.
 
 - Prefer short chunks (text deltas are already small).
-- If you send large payloads (images, whole docs), consider chunking them yourself with flow control (`res.write(...) && next || res.once('drain', next)`).
+- If you send large payloads (images, whole docs), respect `res.write()`'s return value and wait for the `'drain'` event before continuing:
+
+  ```ts
+  if (!res.write(payload)) {
+    await new Promise<void>((resolve) => res.once('drain', resolve));
+  }
+  ```
 - For very large streams, break into multiple SSE events instead of one huge message.
 
 ## Cancellation semantics
@@ -203,6 +302,29 @@ If the client reads slower than the server writes (big payloads), Node buffers a
 - Persist partial output if useful (resume UI state).
 
 **Never** keep the upstream call running after the client is gone. Wastes tokens ($$$).
+
+## Reconnection / resumption
+
+Browsers automatically reconnect dropped `EventSource` connections and replay the last
+received event id in a `Last-Event-ID` request header. **LLM streams are not resumable** —
+the upstream provider call has already been billed and the partial output is gone. Detect a
+reconnect by the presence of the header and short-circuit:
+
+```ts
+if (req.headers['last-event-id']) {
+  // EventSource is auto-retrying. We don't support resumption.
+  return res.status(204).end();   // 204 → browser stops retrying.
+}
+```
+
+Then choose one policy and stick to it:
+
+- **Reject** (preferred for paid LLM endpoints): the `204` above ends it. The user must explicitly retry.
+- **Restart**: ignore the header and start a fresh generation from persisted conversation history (do not "continue" the previous output).
+
+Tell the client to call `source.close()` inside its `done` and `error` handlers — otherwise
+the browser will auto-reconnect on the terminal `error` event and trigger another billed
+call. The example in [Client side](#client-side) does this; copy the pattern.
 
 ## Global exception filter interaction
 
@@ -214,8 +336,9 @@ invalid HTTP to write a second response.
 @Catch()
 export class AllExceptionsFilter {
   catch(e: unknown, host: ArgumentsHost) {
+    if (host.getType() !== 'http') throw e;     // ← let non-HTTP contexts handle it
     const res = host.switchToHttp().getResponse<Response>();
-    if (res.headersSent) return;        // ← CRITICAL for streaming
+    if (res.headersSent) return;                // ← CRITICAL for streaming
     // ... normal { code, message, details?, traceId } body for non-streaming responses
   }
 }
@@ -224,7 +347,7 @@ export class AllExceptionsFilter {
 Inside the stream handler, emit an `error` SSE event before ending:
 
 ```ts
-if (!res.writableEnded) {
+if (res.writable) {
   res.write(`event: error\ndata: ${JSON.stringify({ code, message })}\n\n`);
   res.end();
 }
@@ -236,6 +359,16 @@ if (!res.writableEnded) {
 - Disable HTTP/2 compression for SSE if your stack re-buffers (rare; measure).
 - Check your load balancer's idle timeout — extend it (e.g., ALB default is 60s; bump for long streams).
 
+## CORS for cross-origin clients
+
+`new EventSource(url, { withCredentials: true })` requires the server to send:
+
+- `Access-Control-Allow-Credentials: true`
+- `Access-Control-Allow-Origin: <specific origin>` — credentialed CORS forbids the `*` wildcard.
+- The session cookie must be `SameSite=None; Secure` to be sent on cross-site SSE requests.
+
+Configure these in the global Nest CORS setup (`app.enableCors({ origin: [...], credentials: true })`) and on every load balancer / CDN in front. Without this, the browser opens the connection but drops the cookie and the auth guard rejects with `401`.
+
 ## Rate limit + quota
 
 - Rate limit SSE endpoints same as LLM calls (per user, per model).
@@ -243,15 +376,16 @@ if (!res.writableEnded) {
 
 ## Testing
 
-- Unit-test the async generator in the service.
-- E2E: use supertest to hit the endpoint, read the streamed body, assert the event sequence.
+- **Unit-test the async generator** in the service. Drive it with a fake LLM client that yields a scripted sequence of chunks (incl. `tool_call`, `usage`) and assert on the events your generator yields. Cover the `signal.aborted` branch with a pre-aborted `AbortController`.
+- **E2E with supertest** for the happy path. Supertest waits for the full response, so it's fine for asserting event ordering but **cannot** test mid-stream cancellation, heartbeats, or partial-stream errors.
 
-```ts
-const res = await request(app.getHttpServer())
-  .post('/v1/conversations/c1/stream')
-  .send({ content: 'Hi' });
-// res.text is the full SSE body; parse and assert.
-```
+  ```ts
+  const res = await request(app.getHttpServer())
+    .post('/v1/conversations/c1/stream')
+    .send({ content: 'Hi' });
+  // res.text is the full SSE body; split on \n\n, parse data: lines, assert event sequence.
+  ```
+- **For cancellation / heartbeat tests**, use raw `http.request` (or `undici` with an `AbortController`) so you can read chunks as they arrive, abort mid-stream, and assert that the upstream LLM mock saw an `AbortSignal` fire.
 
 ## Good vs bad
 
@@ -289,12 +423,15 @@ async stream(@Body() dto, @Res() res) {
 ## Code review checklist
 
 - [ ] `text/event-stream` + `Cache-Control: no-cache` + `X-Accel-Buffering: no` headers set
-- [ ] `req.on('close')` aborts the upstream call
-- [ ] Heartbeat every ≤ 30s
-- [ ] Event vocabulary is the standard set (`chunk`, `tool_call`, `usage`, `done`, `error`)
-- [ ] Usage and cost captured in `done` event; persisted server-side
+- [ ] `req.on('close')` aborts the upstream call (no orphaned billed token generation)
+- [ ] Heartbeat comment line every ≤ 15s
+- [ ] Event vocabulary is the standard set (`chunk`, `tool_call`, `tool_result`, `usage`, `done`, `error`)
+- [ ] `done` always fires on success (with `usage`/`costMicroUsd` when available); `costMicroUsd` is a string on the wire
+- [ ] Usage + cost persisted server-side (not just emitted to the client)
 - [ ] Global exception filter checks `res.headersSent`
-- [ ] Quota / rate limit checked before flushing headers
+- [ ] Quota / rate limit checked **before** `flushHeaders()` so a `429` JSON body is still possible
+- [ ] CORS configured with a specific origin + `credentials: true` for cross-origin SPAs
+- [ ] Reconnect handling decided (return `204`, or start a fresh stream — never resume the old one)
 - [ ] Load balancer idle timeout configured for long streams
 
 ## See also

@@ -4,7 +4,7 @@
 
 - Controllers are thin; services hold business logic; repositories hold DB access.
 - Constructor DI only. No `new Service()`, no static `Service.method()`.
-- Small, single-purpose functions. If a function spans two screens, split it.
+- Small, single-purpose functions. Target ≤ 30 lines; controller handlers ≤ 15. Split when you exceed it.
 - No `any` without a justifying comment. Prefer `unknown` at boundaries + narrowing.
 - Immutability by default. `readonly`, `const`, `as const`. Don't mutate function args.
 - Pure utilities in `utils/`. If it needs DI, it's a service, not a util.
@@ -61,7 +61,10 @@ async create(dto: CreateUserDto): Promise<User> {
 
 private async assertEmailAvailable(email: string) {
   if (await this.repo.existsByEmail(email)) {
-    throw new ConflictException({ code: 'USER.EMAIL_TAKEN' });
+    throw new ConflictException({
+      code: 'USER.EMAIL_TAKEN',
+      message: 'That email is already registered.',
+    });
   }
 }
 ```
@@ -279,7 +282,7 @@ function parseJson(raw: string): any {
   return JSON.parse(raw);
 }
 const data = parseJson(x);
-data.whatever.youWant(); // no error, will crash at runtime
+data.whatever.youWant(); // no compile error; may crash at runtime
 ```
 
 ### `readonly` by default
@@ -301,10 +304,12 @@ export class PaymentService {
 
 ### Narrow enums
 
-Use string literal unions or `as const` objects instead of TS enums:
+Prefer string-literal unions or `as const` objects over TS enums — they serialize cleanly to JSON,
+narrow predictably, and emit no runtime code. Numeric/`const enum` are acceptable for hot internal
+paths, but default to `as const` at API and DB boundaries:
 
 ```ts
-// Good
+// Preferred — serialization-friendly, structurally typed
 export const PaymentStatus = {
   Pending: 'pending',
   Paid: 'paid',
@@ -312,8 +317,8 @@ export const PaymentStatus = {
 } as const;
 export type PaymentStatus = typeof PaymentStatus[keyof typeof PaymentStatus];
 
-// Avoid — TS enums emit runtime code and are harder to serialize
-export enum PaymentStatus { Pending, Paid, Refunded }
+// Acceptable but heavier — TS enums emit runtime objects and don't auto-narrow from string input
+export enum PaymentStatus { Pending = 'pending', Paid = 'paid', Refunded = 'refunded' }
 ```
 
 ### Discriminated unions for variants
@@ -348,7 +353,10 @@ for (const o of orders) { o.total = o.items.reduce(...); }
 ## Null / undefined
 
 - Distinguish them: `null` = "we checked and there's nothing"; `undefined` = "not yet loaded / not provided."
-- Prefer one style per codebase. Commonly: `null` in DB rows, `undefined` in optional inputs.
+- Pick one convention per codebase and document it (commonly `null` from the DB, `undefined` for
+  optional inputs). ORMs differ — Prisma returns `null`, Drizzle/TypeORM often surface `undefined` —
+  so pin the chosen style in your repo's house-style doc (`AGENTS.md`, `CLAUDE.md`, `CODESTYLE.md`,
+  or equivalent) and convert at the repository layer rather than leaking both shapes upward.
 - Use `??` for defaults (not `||` which treats `0`/`''`/`false` as missing).
 - Non-null assertion `!` is a smell — prove non-null with a check or refactor the types.
 
@@ -378,7 +386,7 @@ export async function calculateFee(paymentId: string): Promise<number> {
 ## Error handling
 
 - Throw at the boundary when you can't recover. Let NestJS's global filter handle it.
-- Domain errors: extend `HttpException` or a base `DomainError` with a stable `code`.
+- Domain errors: extend the closest semantic Nest exception (`ConflictException`, `NotFoundException`, `BadGatewayException`, `GatewayTimeoutException`, …) with a stable `code`. Reach for a shared `AppException` base only when the status is computed at runtime or genuinely outside the standard set.
 - Don't swallow errors with bare `catch { }`. If you catch, you handle — log + rethrow or transform.
 - `try/catch` around the specific line that throws, not the whole function.
 
@@ -390,6 +398,8 @@ See `10-error-handling.md`.
 - ESLint rule `@typescript-eslint/no-floating-promises` catches this.
 - Use `Promise.all` for independent operations; don't serialize needlessly.
 - Use `Promise.allSettled` when one failing shouldn't stop the others.
+- For ordered streams, paginated cursors, or back-pressured async iterables, use `for await...of` —
+  don't materialize everything into one `Promise.all` if the upstream is unbounded or memory-sensitive.
 
 ## Comments
 
@@ -424,9 +434,11 @@ See `10-error-handling.md`.
 - [ ] Functions are focused (≤30 lines); flat control flow; early returns
 - [ ] No `any` without a comment explaining why
 - [ ] `readonly` on fields and interface props where possible
-- [ ] Enums are `as const` string unions, not TS enums
+- [ ] Enums are `as const` string unions, not TS enums (unless justified)
 - [ ] No floating promises; all async handled
 - [ ] Pure utilities in `utils/`; side effects in services
+- [ ] Transaction / unit-of-work boundary lives in the service layer, not the repository or controller
+- [ ] Null vs `undefined` follows the repo's documented convention; no leak from ORM specifics
 - [ ] No commented-out code; no stale comments
 - [ ] No mutation of function arguments
 

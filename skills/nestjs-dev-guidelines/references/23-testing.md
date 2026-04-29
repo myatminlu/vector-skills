@@ -38,7 +38,7 @@ Beside the implementation: `src/modules/user/user.service.spec.ts`.
 
 ### Framework
 
-Jest is the NestJS default. `test`/`it`/`expect`.
+Jest is the NestJS default. `test`/`it`/`expect`. Modern TS-ESM projects can use **Vitest** instead — it natively supports ESM (no `moduleNameMapper` workarounds for `jose`, Better Auth, etc.) and the API is largely Jest-compatible.
 
 ### Pattern
 
@@ -64,8 +64,8 @@ describe('UserService', () => {
       ],
     }).compile();
     service = module.get(UserService);
-    repo = module.get(UserRepository) as any;
-    events = module.get(EventEmitter2) as any;
+    repo = module.get<UserRepository>(UserRepository) as jest.Mocked<UserRepository>;
+    events = module.get<EventEmitter2>(EventEmitter2) as jest.Mocked<EventEmitter2>;
   });
 
   describe('create', () => {
@@ -145,10 +145,14 @@ export default async () => {
 
 ```ts
 // test/db-isolation.ts
-export function useTransactionIsolation(pool: Pool) {
+import type { Pool, PoolClient } from 'pg';
+
+// Take a getter so the helper can be wired up at describe-time
+// while the Pool itself is resolved later (in beforeAll).
+export function useTransactionIsolation(getPool: () => Pool) {
   let client: PoolClient;
   beforeEach(async () => {
-    client = await pool.connect();
+    client = await getPool().connect();
     await client.query('BEGIN');
   });
   afterEach(async () => {
@@ -163,15 +167,24 @@ Every test runs inside a transaction rolled back at the end — isolation withou
 ### Example
 
 ```ts
+import { Test } from '@nestjs/testing';
+import type { Pool } from 'pg';
+import { DatabaseModule } from '../src/core/database/database.module.js';
+import { UserRepository } from '../src/modules/user/user.repository.js';
+import { useTransactionIsolation } from './db-isolation.js';
+
 describe('UserRepository (integration)', () => {
   let repo: UserRepository;
+  let pool: Pool;
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [DatabaseModule] }).compile();
     repo = module.get(UserRepository);
+    pool = module.get<Pool>('PG_POOL'); // injection token from DatabaseModule
   });
 
-  useTransactionIsolation(pool);
+  // registers beforeEach (BEGIN) and afterEach (ROLLBACK) on this describe
+  useTransactionIsolation(() => pool);
 
   it('inserts and finds by email', async () => {
     await repo.insert({ email: 'x@y.z', name: 'X', passwordHash: 'h' });
@@ -192,8 +205,8 @@ describe('UserRepository (integration)', () => {
 ```ts
 // test/user.e2e-spec.ts
 import { Test } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
-import request from 'supertest';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest'; // if `esModuleInterop` is off, use `import * as request from 'supertest'`
 import { AppModule } from '../src/app.module.js';
 
 describe('POST /v1/users (e2e)', () => {
@@ -256,7 +269,11 @@ Jest is CJS. ESM-only packages break with `require()`. Options:
 }
 ```
 
+The trailing `.js` mapper strips the extension that NodeNext-style imports require, so `from './foo.js'` resolves to `./foo.ts` under Jest.
+
 2. **`--experimental-vm-modules`** — native ESM in Jest; slower, rougher.
+
+3. **Switch to Vitest** — runs ESM natively, no stubs or mappers needed. Worth considering for new projects or when the stub list is growing faster than the real code.
 
 Pattern: use stubs for unit tests; bypass for true e2e where behavior matters.
 
@@ -286,8 +303,8 @@ Fix flaky immediately (skip is not a fix). Never merge flakes to main.
 ## Coverage
 
 - Aim for **meaningful** tests, not a number. 100% coverage can still miss edge cases.
-- CI gate at, e.g., 70% lines — low enough to not force useless tests, high enough to catch neglect.
-- Track coverage trend. Don't let it drop.
+- If your team enforces a CI gate, set it low enough that nobody writes filler tests just to clear the bar (70% lines is a common starting point) — and treat the trend as the real signal, not the absolute number.
+- Don't let coverage drop without reason. Drops should be an explicit decision, not an accident.
 
 ## Snapshots
 
@@ -358,7 +375,7 @@ it('works', async () => {
 
 ## See also
 
-- [`04-code-quality.md`](./04-code-quality.md) — what to test vs skip
+- [`04-code-quality.md`](./04-code-quality.md) — service-layer focus and pure utilities (the natural test seams)
 - [`05-thinking-decision-trees.md`](./05-thinking-decision-trees.md) — when a test is optional
 - [`10-error-handling.md`](./10-error-handling.md) — asserting on the error response body
 - [`14-database-orm-patterns.md`](./14-database-orm-patterns.md) — repository integration tests

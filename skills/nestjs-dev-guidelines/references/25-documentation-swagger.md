@@ -23,27 +23,45 @@ const config = new DocumentBuilder()
   .setTitle('My Service API')
   .setDescription('Public API for MyService')
   .setVersion('1.0.0')
-  .addBearerAuth()                         // Authorization: Bearer <token>
-  .addCookieAuth('session')                // for Better Auth style
+  .addBearerAuth(                                          // Authorization: Bearer <token>
+    { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+    'bearer',                                              // security name (used by @ApiBearerAuth)
+  )
+  .addCookieAuth(                                          // session cookie (Better Auth style)
+    'session',                                             // cookie name on the wire
+    { type: 'apiKey', in: 'cookie', name: 'session' },
+    'cookie',                                              // security name (used by @ApiCookieAuth)
+  )
   .addServer('https://api.example.com')
   .addServer('http://localhost:3000', 'local')
   .build();
 
-const document = SwaggerModule.createDocument(app, config);
-SwaggerModule.setup('docs', app, document, {
-  swaggerOptions: { persistAuthorization: true },
-});
+// Gate registration so /docs and /docs-json are not exposed in production by default.
+const docsEnabled = process.env.NODE_ENV !== 'production' || process.env.ENABLE_DOCS === 'true';
+if (docsEnabled) {
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('docs', app, document, {
+    swaggerOptions: { persistAuthorization: true },
+  });
+}
 ```
 
-**Production:** either gate `/docs` behind admin auth or disable entirely. The spec can leak
-internal capabilities (staging endpoints, experimental fields). Keep `/docs/openapi.json`
-internal or protected.
+When registered, `SwaggerModule.setup('docs', ...)` exposes:
+
+- `/docs` — Swagger UI
+- `/docs-json` — OpenAPI JSON spec (used by SDK generators)
+- `/docs-yaml` — OpenAPI YAML spec
+
+**Production:** prefer disabling registration (as above) over only hiding the UI. Even if
+you serve the UI behind a guard, the spec can leak internal capabilities (staging
+endpoints, experimental fields). `/docs-json` is what SDK generators and crawlers fetch —
+locking only the UI is not enough.
 
 ## Controller decorators
 
 ```ts
 @ApiTags('payments')                              // groups endpoints in the UI
-@ApiBearerAuth()                                  // declares auth for all routes in this controller
+@ApiBearerAuth('bearer')                          // security name must match DocumentBuilder
 @Controller({ path: 'payments', version: '1' })
 export class PaymentController {
   @Get()
@@ -77,11 +95,14 @@ export class CreatePaymentDto {
   @IsString() @Length(3, 3)
   currency!: string;
 
-  @ApiPropertyOptional({ description: 'Idempotency key from header' })
-  @IsOptional() @IsUUID()
-  idempotencyKey?: string;
+  @ApiProperty({ enum: PaymentMethod, enumName: 'PaymentMethod', example: PaymentMethod.Card })
+  @IsEnum(PaymentMethod)
+  method!: PaymentMethod;
 }
 ```
+
+Always pass `enumName` for enums so the generated OpenAPI schema uses a named type
+(`PaymentMethod`) instead of an inline union — generated SDKs become much cleaner.
 
 Or enable the CLI plugin in `nest-cli.json` to reduce boilerplate:
 
@@ -90,6 +111,31 @@ Or enable the CLI plugin in `nest-cli.json` to reduce boilerplate:
 ```
 
 With the plugin, `@ApiProperty` is inferred from the TypeScript types + class-validator decorators. Explicit decorators still win when you need examples or descriptions.
+
+## Headers (not body)
+
+Headers like `Idempotency-Key` or `X-Tenant-Id` belong in `@ApiHeader`, not in the body
+DTO. Putting them in a DTO mis-documents the contract — generated SDKs will send them as
+JSON body fields and the server will not see them.
+
+```ts
+@Post()
+@ApiOperation({ summary: 'Create payment' })
+@ApiHeader({
+  name: 'Idempotency-Key',
+  description: 'Client-supplied UUID; replays return the original response',
+  required: true,
+  schema: { type: 'string', format: 'uuid' },
+})
+@ApiResponse({ status: 201, type: PaymentResponseDto })
+async create(
+  @Headers('idempotency-key') idempotencyKey: string,
+  @Body() dto: CreatePaymentDto,
+) { ... }
+```
+
+For headers shared across every route in a controller, declare them once on the class
+with `@ApiHeader(...)` at controller level.
 
 ## Response DTOs
 
@@ -169,23 +215,84 @@ export class ApiErrorResponseDto {
 Use the DTO that matches the endpoint's pagination model. Prefer explicit per-endpoint DTOs over
 generic wrapper tricks. They produce cleaner Swagger and match the real response contract directly.
 
+## Polymorphic / discriminated responses
+
+When an endpoint returns one of several shapes (e.g. webhook events, union responses),
+register every variant with `@ApiExtraModels` and reference them via `getSchemaPath` so
+the spec emits a proper `oneOf` with a `discriminator`:
+
+```ts
+@ApiExtraModels(InvoicePaidEvent, InvoiceVoidedEvent, InvoiceFailedEvent)
+@Post('webhooks')
+@ApiOperation({ summary: 'Receive invoice webhook' })
+@ApiBody({
+  schema: {
+    oneOf: [
+      { $ref: getSchemaPath(InvoicePaidEvent) },
+      { $ref: getSchemaPath(InvoiceVoidedEvent) },
+      { $ref: getSchemaPath(InvoiceFailedEvent) },
+    ],
+    discriminator: { propertyName: 'type' },
+  },
+})
+async receive(@Body() event: InvoiceEvent) { ... }
+```
+
+Without `@ApiExtraModels`, classes that are not directly referenced by a controller are
+**not emitted** into the spec, so `$ref` lookups break in generated SDKs.
+
+## Streaming endpoints (SSE / chunked)
+
+For SSE handlers (see [`27-ai-streaming-sse.md`](./27-ai-streaming-sse.md)), declare the
+content type with `@ApiProduces` so consumers know not to expect JSON:
+
+```ts
+@Sse('chat/:id/stream')
+@ApiOperation({ summary: 'Stream assistant tokens for a chat session' })
+@ApiProduces('text/event-stream')
+@ApiResponse({
+  status: 200,
+  description: 'SSE stream of `data: { delta: string }` events',
+})
+stream(@Param('id') id: string): Observable<MessageEvent> { ... }
+```
+
+OpenAPI cannot fully describe an SSE stream's event grammar — capture the event shape in
+the response `description`, or define a typed DTO and reference it textually.
+
 ## Auth schemes
 
+The `DocumentBuilder` example above declares two schemes (`bearer`, `cookie`). Add an
+API-key scheme the same way when needed:
+
 ```ts
-config
-  .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' })
-  .addCookieAuth('session', { type: 'apiKey', in: 'cookie' })
-  .addApiKey({ type: 'apiKey', in: 'header', name: 'X-API-Key' }, 'apiKey');
+config.addApiKey(
+  { type: 'apiKey', in: 'header', name: 'X-API-Key' },
+  'apiKey',                                              // security name → used by @ApiSecurity
+);
 ```
 
-Apply per-controller or per-handler:
+Apply per-controller or per-handler. The decorator's argument **must match the security
+name** declared on the builder (the third argument above):
 
 ```ts
-@ApiBearerAuth()
+@ApiBearerAuth('bearer')                                 // matches addBearerAuth(..., 'bearer')
 @UseGuards(BearerGuard)
-@Controller(...)
-export class ApiController {}
+@Controller({ path: 'payments', version: '1' })
+export class PaymentController {}
+
+@ApiCookieAuth('cookie')                                 // matches addCookieAuth(..., 'cookie')
+@UseGuards(SessionGuard)
+@Controller({ path: 'me', version: '1' })
+export class MeController {}
+
+@ApiSecurity('apiKey')                                   // matches addApiKey(..., 'apiKey')
+@Controller({ path: 'integrations', version: '1' })
+export class IntegrationController {}
 ```
+
+If the builder names and decorator names drift, the "Authorize" button in Swagger UI
+sends the wrong scheme and requests will fail with `401`.
 
 ## Excluding endpoints
 
@@ -216,8 +323,9 @@ SwaggerModule.setup('docs/v2', app, v2);
 Once the spec is stable, generate SDKs for consumers:
 
 ```bash
+# NestJS Swagger exposes JSON at `/<setupPath>-json` — match the path in SwaggerModule.setup()
 npx @openapitools/openapi-generator-cli generate \
-  -i http://localhost:3000/docs/openapi.json \
+  -i http://localhost:3000/docs-json \
   -g typescript-fetch \
   -o sdk/typescript
 ```
@@ -267,20 +375,24 @@ export class UserController {
 - Writing separate markdown docs alongside the code that describe endpoints. They drift.
 - Not documenting error responses. Consumers don't know how to handle failures.
 - Using `@ApiProperty({ type: Object })` for unknown shapes. Narrow it or use `additionalProperties`.
-- Leaving `/docs` public with every endpoint — including internal/admin — in production.
+- Leaving `/docs` (UI) **or** `/docs-json` public in production. Locking only the UI does nothing — SDK generators and crawlers hit the JSON.
+- Declaring an auth scheme on `DocumentBuilder` under one security name and applying the decorator with a different name. Swagger UI's "Authorize" button silently sends the wrong header.
 - Checking generated clients into the **server** repo. They belong in consumer repos.
 - Drifting from the standard response contract: e.g., documenting one list endpoint with cursor metadata and another with offset metadata inconsistently, or wrapping single resources inconsistently.
 - Documenting a different shape than what the endpoint actually returns on the wire.
 
 ## Code review checklist
 
-- [ ] Controller has `@ApiTags` and auth decorator (`@ApiBearerAuth` / `@ApiCookieAuth`)
+- [ ] Controller has `@ApiTags` and auth decorator (`@ApiBearerAuth('bearer')` / `@ApiCookieAuth('cookie')` / `@ApiSecurity('apiKey')`) with the **same security name** as `DocumentBuilder`
 - [ ] Every handler has `@ApiOperation({ summary })`
 - [ ] Every status code returned is declared with `@ApiResponse`
 - [ ] DTOs use `@ApiProperty` / `@ApiPropertyOptional`
-- [ ] Enums declared with `enum: MyEnum`
+- [ ] Enums declared with `enum: MyEnum, enumName: 'MyEnum'`
+- [ ] Headers declared with `@ApiHeader`, not as DTO body fields
+- [ ] Polymorphic responses registered via `@ApiExtraModels` + `oneOf` + `getSchemaPath`
+- [ ] SSE / streaming endpoints declare `@ApiProduces('text/event-stream')`
 - [ ] Response shape matches the standard contract from `07` (single-resource object, `{ data, meta }` for lists, `{ code, message, details?, traceId }` for errors)
-- [ ] Swagger disabled or auth-gated in production
+- [ ] Both `/docs` UI **and** `/docs-json` are disabled or auth-gated in production
 - [ ] Params with specific format (UUID, email) declared + validated
 
 ## See also
@@ -289,3 +401,4 @@ export class UserController {
 - [`07-standard-responses.md`](./07-standard-responses.md) — standard response contract in the schema
 - [`09-validation.md`](./09-validation.md) — `class-validator` <-> `@ApiProperty`
 - [`12-authentication-patterns.md`](./12-authentication-patterns.md) — auth schemes
+- [`27-ai-streaming-sse.md`](./27-ai-streaming-sse.md) — SSE handler shape that pairs with `@ApiProduces`

@@ -31,7 +31,7 @@ pain for a year. Clean conventions save review time and keep queries predictable
 - Foreign keys: `<singular_referenced>_id` — `user_id` references `users.id`.
 - Booleans: `is_active`, `has_verified_email`, `can_post`.
 - Timestamps: `<verb>_at` — `created_at`, `verified_at`, `archived_at`.
-- Money: `amount_cents` (int) — never `amount` as a float.
+- Money: `amount_cents` (`bigint`) — never `amount` as a float. `int` overflows past ~$21M.
 - Enums: text columns with CHECK constraint, OR Postgres `ENUM` type (harder to change).
 
 ### Indexes
@@ -46,7 +46,7 @@ pain for a year. Clean conventions save review time and keep queries predictable
 
 ```sql
 CREATE TABLE users (
-  id uuid PRIMARY KEY DEFAULT gen_uuid_v7(),  -- extension or trigger
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   ...
 );
 ```
@@ -55,7 +55,11 @@ CREATE TABLE users (
 - Time-ordered — index-friendly (unlike UUIDv4 which is random and bad for index locality).
 - Not guessable — no enumeration attack (unlike auto-increment integers).
 
-Postgres 17+ has native `uuidv7()`. Older: use extension `pg_uuidv7` or generate in app with a library.
+Function source — verify which one your Postgres has before writing migrations:
+
+- **Postgres 18+:** native `uuidv7()`. No extension needed.
+- **Postgres 17 and older:** install the `pg_uuidv7` extension (`CREATE EXTENSION pg_uuidv7;` → `uuid_generate_v7()`), or generate in app code (e.g. `uuidv7` npm package).
+- Pick one and use it consistently across all migrations. Examples below use `uuidv7()` (Postgres 18+).
 
 ### Alternative: `bigserial` with a public slug/id
 
@@ -113,7 +117,7 @@ Always declare explicitly:
 
 ```sql
 CREATE TABLE orders (
-  id uuid PRIMARY KEY DEFAULT gen_uuid_v7(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   ...
 );
@@ -192,28 +196,48 @@ CREATE INDEX idx_posts_title_trgm ON posts USING gin (title gin_trgm_ops);
 
 ## Transactions
 
-Any mutation that spans two or more rows or tables that must stay consistent:
+Any mutation that spans two or more rows or tables that must stay consistent runs in a transaction. In NestJS, use the ORM's transaction helper instead of raw `BEGIN`/`COMMIT` so the connection lifecycle is managed:
 
 ```ts
-await pool.query('BEGIN');
+// TypeORM
+await this.dataSource.transaction(async (tx) => {
+  await tx.update(Inventory, { id }, { qty: () => `qty - ${n}` });
+  await tx.insert(OrderItem, items);
+  await tx.insert(Order, order);
+});
+
+// Prisma
+await this.prisma.$transaction(async (tx) => {
+  await tx.inventory.update({ where: { id }, data: { qty: { decrement: n } } });
+  await tx.orderItem.createMany({ data: items });
+  await tx.order.create({ data: order });
+});
+```
+
+Raw SQL equivalent (only when ORM is bypassed):
+
+```ts
+await client.query('BEGIN');
 try {
-  await pool.query('UPDATE inventory SET qty = qty - $1 WHERE id = $2', [n, id]);
-  await pool.query('INSERT INTO order_items ...');
-  await pool.query('INSERT INTO orders ...');
-  await pool.query('COMMIT');
+  await client.query('UPDATE inventory SET qty = qty - $1 WHERE id = $2', [n, id]);
+  await client.query('INSERT INTO order_items ...');
+  await client.query('INSERT INTO orders ...');
+  await client.query('COMMIT');
 } catch (e) {
-  await pool.query('ROLLBACK');
+  await client.query('ROLLBACK');
   throw e;
 }
 ```
 
 Use `SELECT ... FOR UPDATE` when you read-then-write and need to prevent interleaving.
 
-See `19-background-jobs.md` for the outbox pattern (transaction + event emission).
+See [`14-database-orm-patterns.md`](./14-database-orm-patterns.md) for ORM transaction details and [`19-background-jobs.md`](./19-background-jobs.md) for the outbox pattern (transaction + event emission).
 
 ## Multi-tenant
 
-- **Row-level isolation** (same DB, tenant_id column): simplest; risks query-bug leaks.
+Quick summary — see [`33-multi-tenancy-patterns.md`](./33-multi-tenancy-patterns.md) for the full strategy comparison, RLS setup, and Nest-side enforcement.
+
+- **Row-level isolation** (same DB, `organization_id` column): simplest; risks query-bug leaks.
 - **Schema-per-tenant**: harder; supported by Postgres but harder to migrate.
 - **DB-per-tenant**: isolation is strong; ops is expensive.
 
@@ -239,7 +263,7 @@ Don't overwrite the current row with snapshots; keep history beside it.
 
 ```sql
 CREATE TABLE organizations (
-  id uuid PRIMARY KEY DEFAULT gen_uuid_v7(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   name varchar(200) NOT NULL,
   slug varchar(100) NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -249,7 +273,7 @@ CREATE TABLE organizations (
 CREATE UNIQUE INDEX uq_organizations_slug_active ON organizations (slug) WHERE deleted_at IS NULL;
 
 CREATE TABLE users (
-  id uuid PRIMARY KEY DEFAULT gen_uuid_v7(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   email citext NOT NULL,
   name varchar(200) NOT NULL,
   password_hash text NOT NULL,
@@ -261,7 +285,7 @@ CREATE TABLE users (
 CREATE UNIQUE INDEX uq_users_email_active ON users (email) WHERE deleted_at IS NULL;
 
 CREATE TABLE memberships (
-  id uuid PRIMARY KEY DEFAULT gen_uuid_v7(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   role text NOT NULL CHECK (role IN ('owner', 'admin', 'member')),
@@ -304,4 +328,5 @@ CREATE INDEX idx_memberships_org ON memberships (organization_id);
 - [`14-database-orm-patterns.md`](./14-database-orm-patterns.md) — ORM-specific patterns
 - [`15-migrations.md`](./15-migrations.md) — safe schema change
 - [`16-cascade-rules.md`](./16-cascade-rules.md) — ON DELETE matrix
+- [`33-multi-tenancy-patterns.md`](./33-multi-tenancy-patterns.md) — full multi-tenancy guide (RLS, scoping, isolation)
 - [`08-pagination-filters-sorting.md`](./08-pagination-filters-sorting.md) — indexes for list endpoints

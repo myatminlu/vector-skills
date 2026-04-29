@@ -4,7 +4,7 @@
 
 - Correctness first. Measure before optimizing. Never premature-optimize without a profile.
 - The top three wins, in order: **fix N+1 queries**, **right-size DB pool + indexes**, **don't block the event loop**.
-- Cache only hot reads with clear invalidation. Never cache money, auth, or unique writes.
+- Cache only hot reads with clear invalidation. Never cache auth, money, or quota decisions, or user-unique data where stale = bug.
 - Stream large payloads (CSV export, file download). Don't buffer GB into memory.
 - Set timeouts on every outbound call. Never a default infinite fetch/axios.
 - Profile p95 / p99, not averages. Pathological tail is what wakes you at night.
@@ -49,7 +49,7 @@ Every list endpoint is only as fast as its indexes.
 Measure with `EXPLAIN (ANALYZE, BUFFERS)` on realistic data. Look for Sequential Scans on
 big tables or high `shared_read` blocks.
 
-See `13-database-design.md`.
+See [`13-database-design.md`](./13-database-design.md).
 
 ## DB connection pool
 
@@ -63,7 +63,7 @@ See `13-database-design.md`.
 
 - Don't `SELECT *`. Name the columns you need.
 - Don't serialize internal fields (`passwordHash`, soft-delete timestamps). Use a mapper.
-- Paginate everything (see `08`).
+- Paginate everything (see [`08-pagination-filters-sorting.md`](./08-pagination-filters-sorting.md)).
 - Compress responses (`compression()` middleware; gzip or brotli).
 
 ## Streaming large payloads
@@ -71,6 +71,8 @@ See `13-database-design.md`.
 For responses > 10MB, stream instead of buffer:
 
 ```ts
+import Cursor from 'pg-cursor';
+
 @Get('export.csv')
 async export(@Res() res: Response) {
   res.setHeader('Content-Type', 'text/csv');
@@ -95,50 +97,21 @@ Same pattern for S3 downloads, SSE, large JSON arrays.
 
 ## Event loop hygiene
 
-- Don't do CPU-heavy work (hashing, large JSON parse, image processing) on the request path. Queue it (`19`).
+- Don't do CPU-heavy work (hashing, large JSON parse, image processing) on the request path. Queue it via BullMQ (see [`19-background-jobs.md`](./19-background-jobs.md)). For in-process CPU-bound work that must stay synchronous to the request (PDF render, image resize), use Node `worker_threads` so the main event loop stays free.
 - Don't `await` synchronously inside tight loops — parallelize with `Promise.all` if independent.
 - `JSON.parse` on > 1 MB strings is slow; consider stream parser for big bodies.
 - Avoid regex catastrophic backtracking on user-supplied strings. Validate length first.
 
 ## Caching
 
-**Cache:**
-- Immutable / rarely-changing data: feature flags, config, country list, pricing tiers.
-- Expensive aggregates that can be slightly stale: dashboard counts, user stats.
-- Read-heavy endpoints with clear TTL: trending, most-popular.
+Cache hot reads with a clear invalidation path; never cache auth, money, or quota
+decisions. Use Redis for shared cache; in-memory is fine for small static data
+(feature flags, country lists). Add stampede protection (single-flight or
+stale-while-revalidate) on hot keys.
 
-**Don't cache:**
-- Auth decisions (always live).
-- Money balances.
-- User-unique data where stale = bug.
-- Anything without a clear invalidation strategy.
-
-### Patterns
-
-```ts
-// Simple TTL
-const key = `user:${id}`;
-const cached = await this.cache.get<User>(key);
-if (cached) return cached;
-const user = await this.repo.findById(id);
-await this.cache.set(key, user, { ttl: 60 });
-return user;
-
-// Write-through invalidation
-async update(id: string, patch: UpdateUserDto) {
-  const user = await this.repo.update(id, patch);
-  await this.cache.del(`user:${id}`);
-  return user;
-}
-```
-
-### Cache stampede
-
-When a popular key expires, 1000 requests race to recompute. Mitigations:
-- Single-flight (locks): one request recomputes, others wait.
-- Stale-while-revalidate: return stale value + async refresh.
-
-Use Redis for shared cache; in-memory cache per instance is fine for small static data.
+Full guidance — key shape, TTL + jitter, invalidation, stampede patterns, cache
+failure behavior, hit/miss metrics — lives in
+[`24a-caching-patterns.md`](./24a-caching-patterns.md).
 
 ## Outbound calls
 
@@ -158,7 +131,19 @@ if (!res.ok) throw new UpstreamError(res.status);
 ## HTTP keep-alive + agent
 
 - Use a shared `http.Agent` / `https.Agent` with `keepAlive: true`. Prevents TCP handshake on every call.
-- Node's `fetch` / `undici` has this built-in; tune `undici.setGlobalDispatcher` for custom pools.
+- Node's built-in `fetch` (undici) keeps connections alive by default; tune the dispatcher for high-concurrency callers.
+
+```ts
+import { Agent, setGlobalDispatcher } from 'undici';
+
+setGlobalDispatcher(
+  new Agent({
+    keepAliveTimeout: 10_000,   // close idle sockets after 10s
+    keepAliveMaxTimeout: 60_000,
+    connections: 128,           // per origin
+  }),
+);
+```
 
 ## Compression
 
@@ -192,16 +177,17 @@ check → data access).
 
 ## Rate limiting
 
-In-app rate limit saves the DB from accidental hot-loop clients; see `11`. A saturated DB
+In-app rate limit saves the DB from accidental hot-loop clients; see [`11-security.md`](./11-security.md). A saturated DB
 takes everyone down, not just the abuser.
 
 ## Profiling tools
 
-- **Node built-in**: `--prof` → `node --prof-process`.
-- **Clinic** (`npx clinic doctor`) — event-loop hygiene.
-- **0x** — flamegraphs.
-- **pg_stat_statements** in Postgres — top queries by time.
-- APM: Datadog / New Relic / Grafana Tempo — production traces.
+- **Node built-in CPU/heap profiles**: `node --cpu-prof --cpu-prof-dir=./prof app.js` and `--heap-prof` produce V8 `.cpuprofile` / `.heapprofile` files openable in Chrome DevTools.
+- **Node legacy tick profiler**: `node --prof` → `node --prof-process isolate-*.log` (lower-level, less common today).
+- **Clinic** (`npx clinic doctor`, `clinic flame`, `clinic bubbleprof`) — event-loop hygiene + flamegraphs.
+- **0x** — flamegraphs from a running process.
+- **pg_stat_statements** in Postgres — top queries by total time.
+- APM: Datadog / New Relic / Grafana Tempo / Sentry Performance — production traces and p95/p99 dashboards.
 
 Set up monitoring of p95/p99 latency per endpoint. Alert on regressions.
 
@@ -214,9 +200,9 @@ Set up monitoring of p95/p99 latency per endpoint. Alert on regressions.
 
 ## Memory
 
-- Node default is ~1.5 GB on 64-bit. Set `--max-old-space-size=1536` or higher on larger instances.
-- Watch RSS in prod metrics. A slow leak shows as climbing RSS over hours.
-- Avoid `Buffer.concat` in a loop for streaming — write to the stream directly.
+- Modern Node (18+) auto-tunes the V8 old-space heap from total system memory, so the default fits most VMs. Set `--max-old-space-size=<MB>` explicitly when running in a container with a memory limit smaller than the host (otherwise Node may overshoot the cgroup limit and OOM-kill) or when you want to allow more headroom on a large instance.
+- Watch RSS in prod metrics. A slow leak shows as climbing RSS over hours; pair it with a heap snapshot (`--heap-prof`) to find the retainer.
+- Avoid `Buffer.concat` in a loop for streaming — write to the stream directly so backpressure works.
 
 ## Startup time
 
@@ -231,7 +217,7 @@ Set up monitoring of p95/p99 latency per endpoint. Alert on regressions.
 - `SELECT * FROM big_table` then filtering in JS.
 - Buffering a 500 MB download before streaming.
 - CPU work inline with requests.
-- Unbounded concurrency (`Promise.all(allOfIt)` on millions of items).
+- Unbounded concurrency (`Promise.all(allOfIt)` on millions of items). Bound it with `p-limit` / `Promise.all(chunk)` batching, or push the work onto BullMQ ([`19-background-jobs.md`](./19-background-jobs.md)).
 - `console.log` in hot paths — slow, unstructured.
 - No timeouts on outbound calls.
 - Ignoring DB pool saturation (`waiting_count > 0`).
@@ -247,7 +233,7 @@ Set up monitoring of p95/p99 latency per endpoint. Alert on regressions.
 - [ ] CPU-heavy work queued, not inline
 - [ ] `Promise.all` for independent async, sequential for dependent
 - [ ] Compression middleware enabled
-- [ ] Caches have TTL + invalidation; not caching auth/money
+- [ ] Caches have TTL + invalidation; not caching auth/money/quota
 - [ ] Profile / load-test results attached for major endpoints
 
 ## See also
@@ -257,3 +243,5 @@ Set up monitoring of p95/p99 latency per endpoint. Alert on regressions.
 - [`08-pagination-filters-sorting.md`](./08-pagination-filters-sorting.md) — list endpoints
 - [`19-background-jobs.md`](./19-background-jobs.md) — offload heavy work
 - [`22-observability.md`](./22-observability.md) — measuring performance
+- [`24a-caching-patterns.md`](./24a-caching-patterns.md) — caching key shape, TTL, invalidation, stampede protection
+- [`11-security.md`](./11-security.md) — rate limiting

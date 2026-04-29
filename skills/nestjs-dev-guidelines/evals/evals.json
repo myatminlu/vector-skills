@@ -5,31 +5,552 @@
       "id": 1,
       "prompt": "Review this NestJS PR. The controller hashes passwords, queries Prisma directly, accepts @Body() body: any, and returns res.status(200).json({ success: false }) for duplicate email. Tell me what blocks approval and what is only a suggestion.",
       "expected_output": "Flags blockers for business logic in controller, missing DTO validation, inconsistent error contract, and direct DB access from the controller. Separates blockers from suggestions and cites the relevant guideline files.",
-      "files": []
+      "files": [],
+      "must_include": [
+        "DTO",
+        "validation",
+        "controller",
+        "Blocker",
+        "suggestion"
+      ]
     },
     {
       "id": 2,
       "prompt": "Design GET /v1/payments for a NestJS app. We need cursor pagination, filter by status, sort by createdAt or amount, and a response shape clients can reuse across list endpoints.",
       "expected_output": "Chooses a justified pagination model, uses DTO-based validation, whitelists filter/sort fields, and returns a consistent { data, meta } contract with pagination metadata.",
-      "files": []
+      "files": [],
+      "must_include": [
+        "cursor",
+        "whitelist",
+        "data",
+        "meta",
+        "DTO"
+      ]
     },
     {
       "id": 3,
       "prompt": "I have a plain Express backend with route files and service files. Should I apply this NestJS skill directly when refactoring an endpoint, or only borrow parts of it?",
       "expected_output": "Explains that the skill is NestJS-first, avoids forcing Nest-specific decorators or folder structure, and uses only the cross-cutting backend guidance that still fits the repo.",
-      "files": []
+      "files": [],
+      "must_include": [
+        "NestJS",
+        "cross-cutting",
+        "Express",
+        "decorator"
+      ]
     },
     {
       "id": 4,
       "prompt": "Our NestJS repo already uses Zod request parsing, pino-http for structured logs, and src/features instead of src/modules. Review a small endpoint change without rewriting those conventions unless they are unsafe.",
       "expected_output": "Respects equivalent-safe repo conventions, applies the underlying safety rules instead of demanding a migration to class-validator or nestjs-pino, and only escalates if a convention is harmful.",
-      "files": []
+      "files": [],
+      "must_include": [
+        "equivalent",
+        "Zod",
+        "pino",
+        "convention"
+      ]
     },
     {
       "id": 5,
       "prompt": "Design a NestJS streaming endpoint for an LLM feature that sends partial results to the browser, records token usage for quota enforcement, and leaves us enough observability to debug failures in production.",
       "expected_output": "Uses an LLM gateway pattern, cancel-aware SSE streaming, structured observability, and per-call usage/cost metering suitable for quotas and production debugging.",
-      "files": []
+      "files": [],
+      "must_include": [
+        "gateway",
+        "SSE",
+        "usage",
+        "metering",
+        "observability"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Review this repository method used by a multi-tenant SaaS: async findInvoice(id: string) { return this.db.query('SELECT * FROM invoices WHERE id = $1', [id]); } It is called from a controller that has an auth guard. Is this safe for a multi-tenant app? What should change?",
+      "expected_output": "Flags missing tenant scope in the query as a cross-tenant read risk, requires tenant id from the trusted request context to be part of the WHERE clause, and notes that repository-level filtering must not rely on the service or controller remembering to check. References multi-tenancy and object-level authorization guidance.",
+      "files": [],
+      "must_include": [
+        "tenant",
+        "WHERE",
+        "context",
+        "repository"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "We want to cache GET /pricing/:tier to reduce read latency on a hot path. What should I decide before shipping the cache, and when should I say no to caching this?",
+      "expected_output": "Walks through cache-decision criteria (read frequency, cost, staleness tolerance, clear invalidation path, metrics), defines key shape and TTL, specifies invalidation on plan/price changes, adds stampede protection where needed, and calls out cases where caching would be wrong (e.g., when pricing is user-specific, contract-negotiated, or part of a billing/quota decision).",
+      "files": [],
+      "must_include": [
+        "TTL",
+        "invalidation",
+        "key",
+        "stampede"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Design the liveness and readiness endpoints and the shutdown behavior for a NestJS service that depends on Postgres and BullMQ. We deploy on Kubernetes with a standard load balancer.",
+      "expected_output": "Separates liveness (cheap, no DB/Redis) from readiness (gated on startup, migrations, dependency reachability), defines a single shutdown coordinator that flips readiness false, waits for LB drain, then closes HTTP, workers, queues, and pools with timeouts. Calls out that BullMQ workers need their own drain and that handlers must remain idempotent.",
+      "files": [],
+      "must_include": [
+        "Liveness",
+        "readiness",
+        "drain",
+        "shutdown",
+        "BullMQ"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "A teammate asks you for the current recommended NestJS major version, the exact install command for @nestjs/common, and the right Node LTS to pin in Dockerfile. How should you answer?",
+      "expected_output": "Declines to give pinned versions or commands from memory. Explains that these are volatile and must be verified against official NestJS/Node docs, the repo's package.json and lockfile, and the CI/Docker runtime. Separates the durable decision (keep runtime/build/test/Docker Node versions aligned; validate env at boot; split modernization from feature work) from the volatile specifics that require a lookup.",
+      "files": [],
+      "must_include": [
+        "verify",
+        "package.json",
+        "official",
+        "lockfile"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Design the error response for a create-invoice endpoint. It should reject unknown fields, handle validation failures, and return a clear error when a duplicate invoice number is detected. What should the HTTP status, error code, and response shape be? When should errors include a traceId?",
+      "expected_output": "Returns 422 for validation/unknown fields with code 'VALIDATION.FAILED', 409 for duplicate with code 'INVOICE.DUPLICATE_NUMBER' thrown as a typed ConflictException subclass, and 500 for system errors with code 'INTERNAL.UNEXPECTED'. Error response is { code, message, details?, traceId } in every case. Explains that domain errors (duplicate) differ from validation errors (bad input) and infrastructure errors; each gets its own status and a dotted MODULE.REASON code namespace. Cites error-handling and response-contract guidance.",
+      "files": [],
+      "must_include": [
+        "422",
+        "409",
+        "code",
+        "traceId",
+        "VALIDATION.FAILED",
+        "INVOICE.DUPLICATE_NUMBER"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "Review this login endpoint for security: @Post('login') login(@Body() body: any) { const user = await this.db.find({email: body.email}); if (password.verify(user.password, body.password)) return user; }. What security issues exist, and what is the correct order of checks?",
+      "expected_output": "Flags: no DTO validation (injection risk), plain 'any' type, timing leak from a faster missing-user path, no rate limit, no account lockout, credentials logged or exposed, no secure password hashing verification shown. Cites OWASP Top 10, brute-force protection, and authentication patterns. Explains the correct check order: DTO validation \u2192 rate-limit check \u2192 user lookup \u2192 same-cost password verification using a dummy hash when the user is missing \u2192 session creation with only hashed session/refresh tokens stored server-side.",
+      "files": [],
+      "must_include": [
+        "DTO",
+        "rate limit",
+        "constant-time",
+        "OWASP"
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "An API endpoint requires authentication. Should it use a Bearer token from the Authorization header or a browser cookie/session? A mobile app calls the API; a web frontend calls it from the browser. What's the recommendation for each, and when should you use both?",
+      "expected_output": "Bearer tokens for mobile/programmatic access; session cookies for web browsers (httpOnly, secure, SameSite chosen for same-site vs true cross-site deployment). When both clients exist, prefer cookies for the web client, and offer Bearer tokens for mobile and third-party integrations. Explains CSRF protection, token refresh rotation, hashed server-side storage for session/refresh tokens, and fail-closed cookie precedence when both cookie and Bearer are present. References authentication-patterns guidance.",
+      "files": [],
+      "must_include": [
+        "Bearer",
+        "cookie",
+        "httpOnly",
+        "CSRF",
+        "mobile"
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "Design the database schema for an invoicing system with users, organizations, invoices, and line items. What should the table names, primary keys, foreign keys, and indexes be? How should you handle soft deletes? What naming convention should columns follow?",
+      "expected_output": "Tables: users, organizations, invoices, invoice_line_items (plural nouns). PK: id (UUID or bigint). FKs: user_id, organization_id, invoice_id. Indexes on FKs and query columns (e.g., organization_id, created_at for range queries). Soft delete: deleted_at timestamp. Columns: snake_case. Rationale: snake_case in DB; camelCase in DTO/code mapping. Cites database-design guidance.",
+      "files": [],
+      "must_include": [
+        "snake_case",
+        "deleted_at",
+        "user_id",
+        "index",
+        "plural"
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "You have a choice: raw pg, TypeORM, Prisma, or Drizzle for a new NestJS service. The service needs multi-tenant data isolation, complex queries, background job workers, and type safety. Which ORM would you recommend and why? What are the trade-offs?",
+      "expected_output": "Recommends Prisma or Drizzle for type safety and dev ergonomics. Explains raw pg for max control but requires manual type safety; TypeORM has more ceremony; Prisma has excellent TypeScript integration but less control over raw SQL; Drizzle balances both. For multi-tenant isolation, explains that the ORM doesn't enforce it\u2014the query (WHERE tenant_id = ?) must be explicit at the repository layer, regardless of choice. Cites orm-patterns guidance.",
+      "files": [],
+      "must_include": [
+        "Prisma",
+        "Drizzle",
+        "tenant_id",
+        "WHERE",
+        "type safety"
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "You need to add a new column to a production table. What is the safe migration strategy? Can you rename, delete, or change a column type in one release, or must you use a two-step process?",
+      "expected_output": "Add/non-breaking changes in one migration. Rename/delete/type-change requires two releases: (1) deploy new code that accepts both old and new forms, add the new column, stop writing the old column; (2) next release, remove code paths reading the old column, drop the old column. Explains forward-only migrations, avoiding downtime, and coordinating with deployments. References migrations and cascade-rules guidance.",
+      "files": [],
+      "must_include": [
+        "two-step",
+        "Additive",
+        "Rename",
+        "drop",
+        "Forward-only"
+      ]
+    },
+    {
+      "id": 16,
+      "prompt": "An invoice has many line items. When an invoice is deleted, should the line items be deleted too (ON DELETE CASCADE), blocked (RESTRICT), or nullified (SET NULL)? What is the rule, and when should you deviate?",
+      "expected_output": "ON DELETE CASCADE for owned data (invoice_id is part of line_item's identity). RESTRICT for shared references (e.g., user_id if a user appears in multiple invoices). SET NULL for optional references (e.g., assigned_to_user_id if you allow unassigned). Explains the rule: if the parent owns the child, cascade. If the child can exist independently or reference multiple parents, restrict or nullify. References cascade-rules guidance.",
+      "files": [],
+      "must_include": [
+        "CASCADE",
+        "RESTRICT",
+        "SET NULL",
+        "owned"
+      ]
+    },
+    {
+      "id": 17,
+      "prompt": "A NestJS request arrives with a JWT in the Authorization header. The app has an @UseGuards(JwtAuthGuard), @UsePipes(ValidationPipe), and an @UseInterceptors(LoggingInterceptor). In what order do these execute, and at what point does business logic (the route handler) run?",
+      "expected_output": "Order: Guard \u2192 Interceptor (pre) \u2192 Pipe \u2192 Handler \u2192 Interceptor (post) \u2192 Global exception filter. Explains why: guards check access before anything runs; pipes transform/validate input before handler; interceptors wrap the whole chain. Handler runs last, after all guards and pipes. References pipelines-interceptors-guards guidance.",
+      "files": [],
+      "must_include": [
+        "Guard",
+        "Interceptor",
+        "Pipe",
+        "Handler",
+        "Filter"
+      ]
+    },
+    {
+      "id": 18,
+      "prompt": "A user is created in the users service. The billing module needs to set up a trial subscription, and the email service needs to send a welcome email. These happen independently (no failure cascade). Should you use EventEmitter2 or the outbox pattern? When would you choose each?",
+      "expected_output": "EventEmitter2 for in-process, in-transaction events (user created \u2192 fire event \u2192 listeners within same app). Outbox pattern when events cross service boundaries or go to a message queue. For single NestJS app: EventEmitter2 + @transactional + listeners that can fail independently. For distributed: emit to outbox table in the same transaction, then a background job publishes events to Kafka/RabbitMQ. References events and background-jobs guidance.",
+      "files": [],
+      "must_include": [
+        "EventEmitter2",
+        "outbox",
+        "in-process",
+        "transaction"
+      ]
+    },
+    {
+      "id": 19,
+      "prompt": "Design a background job to process LLM requests asynchronously. The job should be retryable, survive crashes, not re-process the same request twice, and route failures to a dead-letter queue. Which tool do you use, and what does the handler look like?",
+      "expected_output": "Uses BullMQ with Redis. Handler: (1) read input, (2) call LLM, (3) store result, (4) return status. Idempotency: use a request_id; check if result already exists before calling LLM. Retries: default exponential backoff; poison messages (repeated failures) \u2192 DLQ. Explains why: idempotency prevents duplication; DLQ prevents infinite loops. References background-jobs and observability guidance.",
+      "files": [],
+      "must_include": [
+        "BullMQ",
+        "idempotency",
+        "DLQ",
+        "retry",
+        "request_id"
+      ]
+    },
+    {
+      "id": 20,
+      "prompt": "How should a NestJS service load and validate environment variables? What happens if a required env var is missing when the app starts? Why is it dangerous to load env vars at runtime (e.g., in a controller or service method)?",
+      "expected_output": "Use ConfigModule with Zod schema at app bootstrap. Invalid env = crash before serving traffic. Runtime env loading is dangerous because: (1) late discovery of config errors, (2) inconsistent config across requests, (3) cache-invalidation problems. Shows: ConfigModule, Zod schema example, throw on boot if env invalid. References configuration guidance.",
+      "files": [],
+      "must_include": [
+        "ConfigModule",
+        "Zod",
+        "boot",
+        "Fail",
+        "crash"
+      ]
+    },
+    {
+      "id": 21,
+      "prompt": "Design structured logging for a NestJS service. What should be logged, what must be redacted, and how should you track a request across multiple log lines? What format should prod logs use?",
+      "expected_output": "Use nestjs-pino with JSON output in prod. Log: request/response, errors, slow queries, external API calls. Redact: Authorization, Cookie, Set-Cookie, password, token fields. Track with correlation ID (uuid per request) injected into every log. Explains: plain-text logs aren't queryable at scale; one unredacted Authorization header is a credential leak. References logging guidance.",
+      "files": [],
+      "must_include": [
+        "pino",
+        "JSON",
+        "redact",
+        "correlation",
+        "Authorization"
+      ]
+    },
+    {
+      "id": 22,
+      "prompt": "Your NestJS service calls a third-party LLM API and stores results. How should you set up observability to debug failures in production? What should you trace, and how should you instrument the LLM call?",
+      "expected_output": "Use OpenTelemetry with spans for HTTP requests, DB queries, and external API calls. For LLM: span for prompt input, tokens, latency, cost. Use Langfuse or Helicone to trace LLM behavior separately. Structured logs with correlation ID tie it together. Metrics: token count, latency, cost per user/model. Explains: traces show the full path; metrics show the aggregate; logs show details at a point. References observability and ai-product-patterns guidance.",
+      "files": [],
+      "must_include": [
+        "OpenTelemetry",
+        "span",
+        "Langfuse",
+        "token",
+        "trace"
+      ]
+    },
+    {
+      "id": 23,
+      "prompt": "Write a unit test for a service method that hashes a password. Write an e2e test for a login endpoint. When should you mock dependencies, and when should you use a real database? Can you mock the service under test?",
+      "expected_output": "Unit test: test the hashing logic with mocked crypto (or real hashing library, not mocked). E2e test: real DB, real HTTP layer, real request/response. Mock external APIs (Stripe, LLM), not internal logic. Never mock the class under test\u2014that just re-asserts the mock. For service: test with mocked repository or real DB fixture. Explains: test boundaries (HTTP, DB, external APIs), not internals. References testing guidance.",
+      "files": [],
+      "must_include": [
+        "boundar",
+        "mock",
+        "real",
+        "E2e",
+        "external"
+      ]
+    },
+    {
+      "id": 24,
+      "prompt": "A reporting endpoint joins 5 tables and returns 1000 rows. Each row includes author, organization, and invoice data. What is the N+1 problem, and how should you prevent it? When should you stream the response instead of collecting it all?",
+      "expected_output": "N+1: query author, then loop 1000 times querying invoice. Solution: JOIN or batch load. For large datasets: stream response with Transfer-Encoding: chunked. Explains: N+1 is O(n) queries instead of O(1); batching reduces to 2-3 queries. Stream prevents OOM when data is large. References performance guidance.",
+      "files": [],
+      "must_include": [
+        "N+1",
+        "JOIN",
+        "batch",
+        "stream"
+      ]
+    },
+    {
+      "id": 25,
+      "prompt": "Add Swagger documentation to a POST /invoices endpoint. The endpoint accepts an InvoiceCreateDTO, returns an Invoice, and can return 400 (validation) or 409 (duplicate). How should you structure the decorators?",
+      "expected_output": "Use @ApiTags, @ApiOperation, @ApiResponse, and document request/response via DTOs with @ApiProperty. Example: @Post @ApiOperation({ summary: 'Create invoice' }) @ApiResponse({ status: 201, type: Invoice }) @ApiResponse({ status: 400, description: 'Validation error' }). DTO fields auto-generate from @ApiProperty decorators. References documentation-swagger guidance.",
+      "files": [],
+      "must_include": [
+        "@ApiTags",
+        "@ApiOperation",
+        "@ApiResponse",
+        "@ApiProperty",
+        "DTO"
+      ]
+    },
+    {
+      "id": 26,
+      "prompt": "Expand the LLM streaming endpoint design: the endpoint should support multiple LLM providers (OpenAI, Anthropic, Gemini), handle provider outages gracefully, manage rate limits per provider, and track usage per user. Outline the architecture.",
+      "expected_output": "LLM gateway service with provider abstraction. Gateway selects provider based on availability, cost, quota. Implements: retry logic, fallback to secondary provider, rate-limit headers. Usage tracking: per-call token + cost stored in DB, aggregated per user/model for quota enforcement. Observability: Langfuse/Helicone for LLM tracing. Error handling: provider timeout \u2192 fallback; quota exceeded \u2192 429. References ai-product-patterns, ai-usage-metering, observability guidance.",
+      "files": [],
+      "must_include": [
+        "gateway",
+        "fallback",
+        "rate",
+        "Langfuse",
+        "quota"
+      ]
+    },
+    {
+      "id": 27,
+      "prompt": "A teammate wants to debug why a specific user's invoice generation is slow. Walk through the observability setup: what should logs show, what should traces show, and how do you correlate them?",
+      "expected_output": "Logs: structured JSON with correlation ID, user_id, invoice_id, operation (generate, validate, store), latency. Traces: span for generate (duration), child spans for DB queries, external API calls. Metrics: invoice generation latency p50/p99. Correlation ID ties logs and traces together; query by correlation_id to see the full request. Explains: traces show timeline; logs show details; metrics show aggregate health.",
+      "files": [],
+      "must_include": [
+        "correlation",
+        "trace",
+        "span",
+        "metric"
+      ]
+    },
+    {
+      "id": 28,
+      "prompt": "Design a new NestJS service from scratch. Walk through: folder structure, module breakdown, how you'd bootstrap the app, what you'd set up first, and how you'd avoid common migration mistakes.",
+      "expected_output": "Folder: src/{core,common,modules,events,commands,integrations}. Modules: auth, billing, invoices, etc. Bootstrap order: (1) config + env validation, (2) DB + migrations, (3) core services (auth, logging), (4) feature modules. Checks: can you instantiate services without side effects? Do modules have clear boundaries? Are shared utilities in common/? Avoids: modules importing from other modules' internals; circular dependencies; business logic in controllers. References modern-nestjs-stack and folder-structure guidance.",
+      "files": [],
+      "must_include": [
+        "core",
+        "common",
+        "modules",
+        "config",
+        "Boot"
+      ]
+    },
+    {
+      "id": 29,
+      "prompt": "Review a PR that changes error handling across 5 endpoints. Walk through a code-review checklist: validation, error contracts, status codes, security, logging, tests, type safety. What would you approve and block?",
+      "expected_output": "Checklist items: (1) DTO validation present? (2) Error response shape consistent? (3) HTTP status correct (4xx vs 5xx, semantic)? (4) Security: no sensitive data in errors? (5) Logging: redacted, correlated? (6) Tests: e2e + error cases? (7) Types: no any? (8) Idempotency: can errors be safely retried? Marks each pass/fail and cites relevant reference. Separates blockers from suggestions. References code-review-checklist guidance.",
+      "files": [],
+      "must_include": [
+        "checklist",
+        "Blocker",
+        "Suggestion",
+        "DTO",
+        "validation"
+      ]
+    },
+    {
+      "id": 30,
+      "prompt": "What are the top 5 code-review anti-patterns in NestJS? For each, show a bad example and the correct version.",
+      "expected_output": "Bad patterns: (1) Business logic in controller, (2) @Body() body: any without DTO validation, (3) Hardcoded secrets in code, (4) Query N+1 loops, (5) Mocking the service under test. Shows before/after for each. Explains why each is wrong and what breaks. References code-review-anti-patterns and specific rules (e.g., validation, testing, security).",
+      "files": [],
+      "must_include": [
+        "controller",
+        "any",
+        "secret",
+        "N+1",
+        "mock"
+      ]
+    },
+    {
+      "id": 31,
+      "prompt": "You're adding a new security feature to a multi-tenant SaaS: when a user logs in from a new device, send an email confirmation. Walk through the security checklist: tenant isolation, email validation, rate limits, session handling, and audit logging.",
+      "expected_output": "Tenant isolation: derive tenant from JWT/session, never from request. Email validation: verify owner before acting. Rate limits: max login attempts, max email sends per user. Session: secure cookies, SameSite matched to deployment topology, short-lived tokens, hashed session/refresh token storage, CSRF protection. Audit: log login attempt + device + result. Explains: cross-tenant leaks come from missing WHERE tenant_id, not from evil attacks. Logging is for post-incident forensics. References security, multi-tenancy, and auth-patterns guidance.",
+      "files": [],
+      "must_include": [
+        "JWT",
+        "tenant",
+        "Rate limit",
+        "audit",
+        "CSRF"
+      ]
+    },
+    {
+      "id": 32,
+      "prompt": "Your NestJS service has no logging, errors are strings mixed with data, pagination is unpaginated, and DB queries aren't indexed. Prioritize: what's the highest-impact refactor, and what's safe to leave for later?",
+      "expected_output": "Priority 1: Structured logging + error contracts (prevents debugging blindness). Priority 2: Pagination (prevents OOM/outages). Priority 3: DB indexes (improves latency). Priority 4: Test coverage (ensures refactors don't break). Safe to leave: minor style, comments. Explains: logging is the prerequisite for debugging; pagination prevents outages; the rest is steady-state hardening. References execution-discipline.",
+      "files": [],
+      "must_include": [
+        "logging",
+        "pagination",
+        "index",
+        "test",
+        "priority"
+      ]
+    },
+    {
+      "id": 33,
+      "prompt": "A webhook endpoint receives events from a payment provider. How should you validate the webhook signature, ensure idempotency, and handle retries? What should you log, and what should you avoid logging?",
+      "expected_output": "Signature: verify against the raw bytes (preserve rawBody on the route, e.g. NestFactory rawBody:true); use the algorithm the provider documents (commonly HMAC-SHA256, but Ed25519 / JWT-style also occur — verify per provider); compare with a constant-time function (crypto.timingSafeEqual). Reject mismatches with 401. Enforce a freshness window on the timestamp header to block replay. Idempotency: store (provider, event_id) with a unique index in webhook_events; insert-then-process; track status (received/processing/done/failed); design downstream effects to be idempotent on the domain entity. Retries: ack 2xx fast (verify -> insert -> enqueue -> 2xx); push the real work to a background worker with a DLQ; ack 2xx for unhandled event types (a 4xx triggers infinite provider retries). For high-stakes events (payments, refunds), re-fetch authoritative state from the provider's API by id. Logging: log provider, event_id, event_type, tenant_id, result, latency, correlation_id; never log the raw body, signature header, or auth header (PII / secrets). References: 36-webhooks, 11-security, 19-background-jobs, 21-logging, 33-multi-tenancy.",
+      "files": [],
+      "must_include": [
+        "raw bytes",
+        "timingSafeEqual",
+        "event_id",
+        "2xx",
+        "unhandled",
+        "PII"
+      ]
+    },
+    {
+      "id": 34,
+      "prompt": "A team is migrating a monolithic payment service from v17 to v19 of NestJS, upgrading Node, and modernizing TypeORM queries. What's the safest approach? What should be done in one release vs split across releases?",
+      "expected_output": "Feature release (one) vs refactor release (separate). Migrate Node/NestJS in one release; test all features. TypeORM refactoring can be phased: (1) add new patterns alongside old, (2) migrate high-risk flows, (3) retire old patterns. Separates modernization from features to isolate risk. Notes: test coverage must be strong before refactoring. References version guidance and execution-discipline.",
+      "files": [],
+      "must_include": [
+        "modernization",
+        "feature",
+        "phased",
+        "test",
+        "isolate"
+      ]
+    },
+    {
+      "id": 35,
+      "prompt": "A service authenticates users with a 'user_id' from the request body in a multi-tenant app. Why is this a critical bug, and what should change?",
+      "expected_output": "Critical: client-supplied user_id is trusted, allowing anyone to act as anyone. Fix: derive user_id from the JWT (server-signed, untrusted client). Store in request context (request.user.id), use in guards/services/queries. This is the core multi-tenant rule: server-derived identity, never client-supplied. References multi-tenancy-patterns and authentication-patterns.",
+      "files": [],
+      "must_include": [
+        "JWT",
+        "client",
+        "context",
+        "request.user",
+        "trust"
+      ]
+    },
+    {
+      "id": 36,
+      "prompt": "Design a rate-limiting strategy for a public API endpoint. Different user tiers (free, pro, enterprise) have different limits. How should you enforce limits, what should you return when a client exceeds limits, and how should you handle distributed systems?",
+      "expected_output": "Use Redis-backed rate limiter (sliding window or token bucket). Per-user limits by tier. Return 429 (Too Many Requests) with Retry-After header. In distributed systems: centralized Redis, not per-server. For gradual limits: soft limit (warn), hard limit (block). Logging: log near-limit and exceeded events per user. References security, configuration, and observability guidance.",
+      "files": [],
+      "must_include": [
+        "Redis",
+        "429",
+        "Retry-After",
+        "tier",
+        "sliding"
+      ]
+    },
+    {
+      "id": 37,
+      "prompt": "An invoice processing job fails unpredictably. How should you structure the handler to be resilient and debuggable? What should the error path look like, and when should you DLQ vs retry?",
+      "expected_output": "Handler: input validation, fail-fast on bad data (DLQ), exponential backoff on transient errors (retry). Idempotency: check if result exists, skip if already processed. DLQ criteria: unmappable data structure, security error, permanent failure (e.g., user deleted). Logging: log attempt count, error reason, final outcome. Observability: per-job metrics (duration, retries, success rate). References background-jobs and observability guidance.",
+      "files": [],
+      "must_include": [
+        "idempotency",
+        "DLQ",
+        "retry",
+        "backoff",
+        "Metric"
+      ]
+    },
+    {
+      "id": 38,
+      "prompt": "A DTO uses @IsString, @Length, @IsEmail decorators. Why is this important, and what happens if you skip validation? What should the ValidationPipe config be?",
+      "expected_output": "DTOs + class-validator block unknown fields, bad types, injection payloads at the entry point. Skipping = trusting client (OWASP risk). ValidationPipe config: whitelist: true, forbidNonWhitelisted: true, transform: true, transformOptions: { enableImplicitConversion: true }. Explains: whitelist prevents mass-assignment; forbid prevents silent data loss; transform coerces types. References validation guidance.",
+      "files": [],
+      "must_include": [
+        "whitelist",
+        "forbidNonWhitelisted",
+        "transform",
+        "ValidationPipe",
+        "OWASP"
+      ]
+    },
+    {
+      "id": 39,
+      "prompt": "Review this NestJS code: the BillingService imports the users module's repository directly and runs `this.userRepo.query('SELECT email FROM users WHERE id = $1', [userId])` to fetch an email for an invoice receipt. Both modules live in the same NestJS app. What's wrong, and what's the right fix?",
+      "expected_output": "Flags it as a module-boundary violation: one module owns its tables, and other modules must not read them via raw SQL or another module's repository. Correct fix: BillingModule imports UsersModule and calls a public UsersService method (e.g., getEmailById) exposed through the module's index/exports. Alternative: subscribe to a UserCreated/UserUpdated event if BillingService only needs a denormalized snapshot. Explains why: shared table access turns every users-schema change into a cross-module break and couples modules through the DB instead of through APIs. Cites module-design guidance and the non-negotiable that a module owns its tables.",
+      "files": [],
+      "must_include": [
+        "boundary",
+        "module",
+        "service",
+        "event",
+        "table"
+      ]
+    },
+    {
+      "id": 40,
+      "prompt": "Review the naming in this NestJS file set: class `userservice` in `UserService.ts`, interface `IUserProfile`, type `TPaymentRow`, env var `databaseUrl`, constant `maxRetries = 3`, file `createUserDTO.ts`, folder `Pipes/` with `ParseCuid.Pipe.ts`. Which names are wrong, and what should each become?",
+      "expected_output": "Flags every violation against the convention: class should be `UserService` (PascalCase) in `user.service.ts` (kebab-case + .kind suffix); interface should be `UserProfile` (no `I` Hungarian prefix); type should be `PaymentRow` (no `T` prefix); env var should be `DATABASE_URL` (SCREAMING_SNAKE); constant should be `MAX_RETRIES` (SCREAMING_SNAKE); file should be `create-user.dto.ts` (kebab-case + .dto.ts); folder should be `pipes/` (lowercase plural for utility folders) with `parse-cuid.pipe.ts`. Cites naming-conventions guidance.",
+      "files": [],
+      "must_include": [
+        "PascalCase",
+        "kebab-case",
+        "SCREAMING_SNAKE",
+        "Hungarian",
+        "kind"
+      ]
+    },
+    {
+      "id": 41,
+      "prompt": "Design the API surface for a payments resource: a list endpoint, a create endpoint that charges a card, a full update, a partial update, a refund action, and a delete. What are the URLs, HTTP verbs, status codes on success, and which endpoints need an idempotency key? How is versioning handled?",
+      "expected_output": "URLs use plural noun and URI versioning under `/v1/payments`. GET /v1/payments (200, paginated list). POST /v1/payments creates a charge (201 + Location header) and MUST require an `Idempotency-Key` header because it has money side-effects. PUT /v1/payments/:id full replace (200/204, idempotent). PATCH /v1/payments/:id partial update (200, not idempotent without an idempotency key). POST /v1/payments/:id/refund as a sub-resource action (201/200) and also needs an idempotency key. DELETE /v1/payments/:id (204, idempotent). Bumps v1\u2192v2 only on breaking changes; additive fields stay in v1. Cites api-design guidance.",
+      "files": [],
+      "must_include": [
+        "v1",
+        "201",
+        "Idempotency-Key",
+        "PUT",
+        "PATCH"
+      ]
+    },
+    {
+      "id": 42,
+      "prompt": "Review this service: `@Injectable() export class InvoiceService { private repo = new InvoiceRepository(); async process(input: any): Promise<any> { /* 180 lines: validate, fetch user, compute tax, charge card, update DB, send email, log to S3, retry on failure, fall back to second provider */ } }`. What code-quality rules does this break, and how should you refactor it?",
+      "expected_output": "Flags multiple violations: (1) `new InvoiceRepository()` instead of constructor DI \u2014 breaks testability and lifecycle management; (2) `input: any` and `Promise<any>` \u2014 should be a typed DTO and a typed return; (3) one 180-line method does validation, payment, persistence, notification, logging, and provider fallback \u2014 violates single-responsibility; (4) provider-fallback logic belongs behind a gateway abstraction, not inline. Refactor: inject InvoiceRepository, PaymentGateway, Mailer, AuditLogger via constructor; replace `any` with `ProcessInvoiceInput` DTO and `Invoice` return type; split into small methods (validate, charge, persist, notify) orchestrated by a thin process(); push retry/fallback into the PaymentGateway. Cites code-quality and ai-product/payment gateway guidance.",
+      "files": [],
+      "must_include": [
+        "DI",
+        "any",
+        "single",
+        "constructor",
+        "gateway"
+      ]
+    },
+    {
+      "id": 43,
+      "prompt": "A NestJS endpoint lets a user fetch a document: GET /v1/documents/:id. The route is protected by JwtAuthGuard, and the user has the role `editor`. The handler calls `this.docs.findById(id)` and returns the row. Two questions: (1) is role-based access (RBAC) enough here, or do you also need an ownership/object-level check, and why? (2) where should each check live \u2014 guard, service, or repository?",
+      "expected_output": "RBAC alone is not enough. Role checks answer 'is this user allowed to use this kind of endpoint at all', but they don't stop user A (also an editor) from reading user B's document \u2014 that's IDOR. You need an object-level authorization check that the document belongs to the requester (or their org/tenant). Layering: JwtAuthGuard authenticates and attaches request.user (who); a RolesGuard or @Roles decorator enforces the coarse role (what kind of action); the service/repository layer enforces ownership/tenant by including `WHERE owner_id = :userId` (or tenant_id) in the query, derived from the authenticated context \u2014 never from the URL or body. Tests must prove user A cannot read user B's document even with a valid JWT. Cites security, authentication-patterns, multi-tenancy-patterns, and the non-negotiable that every ID from the URL is checked against the authenticated user's ownership.",
+      "files": [],
+      "must_include": [
+        "RBAC",
+        "IDOR",
+        "ownership",
+        "tenant",
+        "JWT"
+      ]
     }
   ]
 }

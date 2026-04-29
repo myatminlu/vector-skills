@@ -6,8 +6,10 @@
 - Choose pagination by navigation semantics, consistency needs, and data shape — not by endpoint label.
 - **Cursor/keyset** is usually right for sequential browsing over large or frequently changing data.
 - **Offset** is right when the UX truly needs page-number navigation, random access, or exact totals.
-- Filters: `?filter[field]=value` with a **whitelist** of allowed fields.
-- When sort is user-configurable, use `?sort=field` (asc) or `?sort=-field` (desc). Whitelist allowed fields.
+- Filters use bracket notation: `?filter[field]=value`. The DTO is a **nested `filter` object** validated with `@ValidateNested` + `@Type`, with every field whitelisted.
+- Free-text search is a separate top-level param (`?search=...`), not a filter.
+- When sort is user-configurable, use `?sort=field` (asc) or `?sort=-field` (desc). Validate format with `@Matches` at the DTO; validate fields against an allowlist in the service; map API names → SQL columns through a static table.
+- Cursors are opaque base64url payloads. Malformed cursors → `400 QUERY.INVALID_CURSOR`. Out-of-range offset pages → `200` with `data: []` and the requested `page` echoed back (echo, not clamp).
 - Shape under `data` is always an array; `meta.pagination` carries navigation.
 
 ## Why it matters
@@ -112,15 +114,25 @@ A cursor is usually `base64url(JSON.stringify({ id, createdAt }))` — the keys 
 sort. The exact encoding is an implementation detail; clients must treat it as opaque.
 
 ```ts
+import { BadRequestException } from '@nestjs/common';
+
+// Verify the target Node runtime supports the 'base64url' encoding before copying.
 interface CursorPayload { id: string; createdAt: string; }
 
 function encodeCursor(p: CursorPayload): string {
   return Buffer.from(JSON.stringify(p)).toString('base64url');
 }
 function decodeCursor(c: string): CursorPayload {
-  return JSON.parse(Buffer.from(c, 'base64url').toString());
+  try {
+    return JSON.parse(Buffer.from(c, 'base64url').toString());
+  } catch {
+    throw new BadRequestException({ code: 'QUERY.INVALID_CURSOR', message: 'Cursor is malformed' });
+  }
 }
 ```
+
+Treat decode failures as `400` (`QUERY.INVALID_CURSOR`), not `500` — a malformed cursor is bad
+client input, not a server bug.
 
 ### Query (tuple comparison)
 
@@ -143,6 +155,10 @@ LIMIT 51;
 
 Fetch `limit+1` rows. If you got `limit+1`, `hasMore=true`; drop the extra; the last row of
 the kept set becomes the cursor.
+
+The `(created_at, id) < ($2, $3)` row-comparison shorthand only works because every column in
+the `ORDER BY` sorts in the same direction. For mixed-direction sorts, expand the predicate
+manually — see the **Cursor/keyset sorting** section below.
 
 ### Pagination DTO
 
@@ -225,60 +241,159 @@ export class OffsetPaginationQueryDto {
 
 ```
 ?filter[status]=paid
+?filter[status]=paid,refunded                              # IN — comma-separated
+?filter[status]=paid&filter[status]=refunded               # IN — repeated key (also valid)
 ?filter[createdAfter]=2026-01-01&filter[createdBefore]=2026-04-01
 ?filter[amount][gte]=1000&filter[amount][lte]=5000
+?search=alice                                              # free-text, separate from filter
 ```
 
-- Bracket notation `filter[field]=value` for simple equality.
-- Range operators: `filter[field][gte|lte|gt|lt|ne]=value`.
-- Arrays (IN): repeat or comma — `filter[status]=paid,refunded`.
-- Free-text search: `search=<text>` (separate from `filter`).
+- Bracket notation `filter[field]=value` for simple equality. The default Express query parser
+  used by NestJS parses brackets into nested objects, so `filter[amount][gte]=1000` arrives at the
+  controller as `{ filter: { amount: { gte: '1000' } } }`. The DTO must mirror that shape.
+- Range operators live under the field: `filter[field][gte|lte|gt|lt|ne]=value`.
+- Arrays (IN): repeat the key, or comma-separate. The DTO normalizes both into an array.
+- Free-text search: `search=<text>` is a top-level query param, not a filter.
 
 ### DTO + whitelist
 
-Never trust the client to pick which columns are filterable. Whitelist via DTO:
+Never trust the client to pick which columns are filterable. Whitelist with a nested `filter`
+DTO that mirrors the URL shape, plus `@ValidateNested` + `@Type` so class-transformer can
+hydrate it from the parsed query object:
 
 ```ts
-export class ListPaymentsCursorQueryDto extends CursorPaginationQueryDto {
-  @ApiPropertyOptional({ enum: PaymentStatus })
-  @IsOptional() @IsEnum(PaymentStatus)
-  status?: PaymentStatus;
+import { IsArray, IsDateString, IsEnum, IsInt, IsOptional, IsString,
+  MaxLength, Min, ValidateNested } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
-  @ApiPropertyOptional()
-  @IsOptional() @IsDateString()
-  createdAfter?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional() @IsDateString()
-  createdBefore?: string;
+// Range operators for a numeric field. Add only the operators the endpoint actually supports.
+class AmountRangeFilterDto {
+  @ApiPropertyOptional({ minimum: 0 })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0)
+  gte?: number;
 
   @ApiPropertyOptional({ minimum: 0 })
   @IsOptional() @Type(() => Number) @IsInt() @Min(0)
-  minAmount?: number;
+  lte?: number;
+}
+
+// Per-endpoint filter shape — only fields listed here are accepted.
+class PaymentFilterDto {
+  // Accept either ?filter[status]=paid,refunded OR ?filter[status]=paid&filter[status]=refunded.
+  // Normalize to string[] before @IsEnum runs.
+  @ApiPropertyOptional({ enum: PaymentStatus, enumName: 'PaymentStatus', isArray: true })
+  @IsOptional()
+  @Transform(({ value }) =>
+    Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : value,
+  )
+  @IsArray()
+  @IsEnum(PaymentStatus, { each: true })
+  status?: PaymentStatus[];
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsOptional() @IsDateString()
+  createdAfter?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsOptional() @IsDateString()
+  createdBefore?: string;
+
+  @ApiPropertyOptional({ type: AmountRangeFilterDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AmountRangeFilterDto)
+  amount?: AmountRangeFilterDto;
+}
+
+export class ListPaymentsCursorQueryDto extends CursorPaginationQueryDto {
+  @ApiPropertyOptional({ type: PaymentFilterDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PaymentFilterDto)
+  filter?: PaymentFilterDto;
+
+  @ApiPropertyOptional({ description: 'Free-text search; trimmed; max 200 chars' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(200)
+  search?: string;
 }
 ```
 
-With `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })`, any unknown query param
-is rejected. No surprise filters.
+Required ValidationPipe configuration (typically global):
 
-### Service-side query building
+```ts
+app.useGlobalPipes(new ValidationPipe({
+  whitelist: true,
+  forbidNonWhitelisted: true,
+  transform: true,
+  transformOptions: { enableImplicitConversion: false }, // keep @Type explicit
+}));
+```
+
+With this setup, any unknown query param — including unknown keys inside `filter[...]` — is
+rejected with `400`. No surprise filters, no accidental column exposure.
+
+The same `filter` + `search` pattern applies to offset query DTOs; only the pagination base class
+differs (`extends OffsetPaginationQueryDto`).
+
+### Service-side query building (cursor + filter + search)
 
 ```ts
 const where: string[] = ['deleted_at IS NULL'];
 const params: unknown[] = [];
 
-if (q.status) { params.push(q.status); where.push(`status = $${params.length}`); }
-if (q.createdAfter) { params.push(q.createdAfter); where.push(`created_at >= $${params.length}`); }
-if (q.createdBefore) { params.push(q.createdBefore); where.push(`created_at <= $${params.length}`); }
-if (q.minAmount !== undefined) { params.push(q.minAmount); where.push(`amount_cents >= $${params.length}`); }
+if (q.filter?.status?.length) {
+  params.push(q.filter.status);
+  where.push(`status = ANY($${params.length}::text[])`);
+}
+if (q.filter?.createdAfter) {
+  params.push(q.filter.createdAfter);
+  where.push(`created_at >= $${params.length}`);
+}
+if (q.filter?.createdBefore) {
+  params.push(q.filter.createdBefore);
+  where.push(`created_at <= $${params.length}`);
+}
+if (q.filter?.amount?.gte !== undefined) {
+  params.push(q.filter.amount.gte);
+  where.push(`amount_cents >= $${params.length}`);
+}
+if (q.filter?.amount?.lte !== undefined) {
+  params.push(q.filter.amount.lte);
+  where.push(`amount_cents <= $${params.length}`);
+}
+if (q.search) {
+  // Production: prefer a tsvector / FTS index over ILIKE for non-trivial corpora.
+  params.push(`%${q.search}%`);
+  where.push(`description ILIKE $${params.length}`);
+}
 
-const sql = `SELECT ... WHERE ${where.join(' AND ')} ORDER BY created_at DESC, id DESC LIMIT $${params.length + 1}`;
+// Cursor seek predicate — must match the ORDER BY tuple exactly (created_at DESC, id DESC).
+if (q.cursor) {
+  const c = decodeCursor(q.cursor);
+  params.push(c.createdAt, c.id);
+  where.push(
+    `(created_at, id) < ($${params.length - 1}::timestamptz, $${params.length}::text)`,
+  );
+}
+
 params.push(q.limit + 1);
+const sql = `
+  SELECT id, created_at, status, amount_cents, description
+  FROM payments
+  WHERE ${where.join(' AND ')}
+  ORDER BY created_at DESC, id DESC
+  LIMIT $${params.length}
+`;
 ```
 
-This example assumes a cursor endpoint with a fixed keyset-safe ordering: `created_at DESC, id DESC`.
+This assumes a cursor endpoint with a fixed keyset-safe ordering: `created_at DESC, id DESC`.
 
-Always use parameterized placeholders. Never string-concatenate user input into SQL.
+Always use parameterized placeholders. Never string-concatenate user input into SQL — including
+sort field names and direction tokens (whitelist them; do not interpolate raw input).
 
 ## Sorting
 
@@ -287,11 +402,24 @@ Always use parameterized placeholders. Never string-concatenate user input into 
 For keyset pagination, the safest design is a fixed sort per endpoint.
 
 - Good: one stable ordering such as `created_at DESC, id DESC`
-- Acceptable: a small, explicit set of keyset-safe sorts
+- Acceptable: a small, explicit set of keyset-safe sorts (each one bound to its own cursor payload shape)
 - Risky: fully user-configurable multi-field sort without changing the cursor payload and seek predicate
 
 If a cursor endpoint supports configurable sort, the cursor must encode the active sort tuple plus
 a unique tie-breaker, and the `WHERE (...) < (...)` predicate must match that exact tuple.
+
+**Mixed sort directions break naive tuple comparison.** PostgreSQL's row-comparison operator
+(`(a, b) < (x, y)`) only behaves like a keyset seek when *every* column sorts in the same
+direction. For `ORDER BY created_at DESC, id ASC` you must expand the predicate manually:
+
+```sql
+WHERE created_at < $1
+   OR (created_at = $1 AND id > $2)
+```
+
+Either pin every cursor endpoint to uniform direction (`DESC, DESC` or `ASC, ASC`), or expand
+the predicate per active sort. Never copy the `(a, b) < (x, y)` shorthand onto a mixed-direction
+sort — pages will skip or duplicate rows silently.
 
 If that sounds too complex for the endpoint, use offset instead.
 
@@ -309,32 +437,67 @@ sort fields together with page numbers.
 
 ### DTO with whitelist
 
+Validate the *format* at the DTO boundary, then validate the *fields* in the service against an
+allowlist. The two checks are complementary: the regex stops obvious garbage (`?sort=' OR 1=1`),
+and the allowlist stops anything that parses but isn't a sortable column.
+
 ```ts
+import { BadRequestException } from '@nestjs/common';
+import { IsOptional, IsString, Matches } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+
+// Format: one or more comma-separated tokens, each an optional `-` then an identifier.
+const SORT_PARAM_REGEX = /^-?[a-zA-Z][a-zA-Z0-9_]*(?:,-?[a-zA-Z][a-zA-Z0-9_]*)*$/;
+
 const allowedSortFields = ['createdAt', 'amount', 'status'] as const;
 type AllowedSortField = typeof allowedSortFields[number];
 
+// Map API field → SQL column. Never let the API field name reach SQL directly.
+const sortColumn: Record<AllowedSortField, string> = {
+  createdAt: 'created_at',
+  amount: 'amount_cents',
+  status: 'status',
+};
+
 export class AdminListPaymentsOffsetQueryDto extends OffsetPaginationQueryDto {
-  @ApiPropertyOptional({ description: 'Sort field, prefix with - for desc' })
-  @IsOptional() @IsString()
+  @ApiPropertyOptional({
+    description: 'Sort fields, comma-separated; prefix with - for desc. Example: -createdAt,status',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(SORT_PARAM_REGEX, { message: 'sort must be like "field" or "-field,field"' })
   sort?: string;
 }
 
 // service
 function parseSort(input?: string): { field: AllowedSortField; dir: 'ASC' | 'DESC' }[] {
   if (!input) return [{ field: 'createdAt', dir: 'DESC' }];
-  return input.split(',').map(s => {
-    const dir = s.startsWith('-') ? 'DESC' : 'ASC';
-    const field = s.replace(/^-/, '') as AllowedSortField;
+  return input.split(',').map(token => {
+    const dir = token.startsWith('-') ? 'DESC' : 'ASC';
+    const field = token.replace(/^-/, '') as AllowedSortField;
     if (!allowedSortFields.includes(field)) {
-      throw new BadRequestException({ code: 'QUERY.INVALID_SORT_FIELD', message: `Cannot sort by "${field}"` });
+      throw new BadRequestException({
+        code: 'QUERY.INVALID_SORT_FIELD',
+        message: `Cannot sort by "${field}"`,
+      });
     }
     return { field, dir };
   });
 }
+
+// Build ORDER BY safely — column names come from the static map, direction is one of two literals.
+function buildOrderBy(sorts: ReturnType<typeof parseSort>): string {
+  const clauses = sorts.map(s => `${sortColumn[s.field]} ${s.dir}`);
+  // Always append a unique tie-breaker so order is deterministic across pages.
+  if (!sorts.some(s => s.field === 'createdAt')) clauses.push('created_at DESC');
+  clauses.push('id DESC');
+  return `ORDER BY ${clauses.join(', ')}`;
+}
 ```
 
-Whitelist is mandatory — otherwise `?sort=password_hash` becomes a data exfiltration vector
-and arbitrary fields cause full table scans.
+Whitelist is mandatory — otherwise `?sort=password_hash` becomes a data exfiltration vector and
+arbitrary fields cause full table scans. Direction must come from a fixed set of literals
+(`'ASC' | 'DESC'`); never interpolate raw input.
 
 ## Combined: filter + sort + paginate
 
@@ -391,13 +554,15 @@ with `EXPLAIN ANALYZE` on representative data. See `13-database-design.md`.
 ## Edge cases
 
 - **Empty cursor page:** `data: []`, `meta.pagination = { nextCursor: null, hasMore: false, limit }`.
-- **Empty offset page:** `data: []`, `meta.pagination = { page, limit, total, totalPages }`.
-- **Cursor pointing past the end:** treat as empty page; don't 404.
+- **Empty offset page (in-range):** `data: []`, `meta.pagination = { page, limit, total, totalPages }`.
+- **Cursor pointing past the end:** treat as empty page; don't 404. Return `nextCursor: null`, `hasMore: false`.
+- **Malformed / undecodable cursor:** return `400` with `{ code: 'QUERY.INVALID_CURSOR' }`. Do not silently fall back to "first page" — that masks client bugs.
+- **Offset page beyond `totalPages`:** return `200` with `data: []` and **echo** the requested `page` in `meta.pagination` (do not clamp). Echo is the chosen default across this skill — it lets the client see exactly why the slice is empty and stays consistent with the contract in [`07-standard-responses.md`](./07-standard-responses.md). Do not 404; out-of-range is an empty slice, not a missing resource.
 - **Cursor for a deleted row:** tuple comparison still works (other rows are before/after regardless).
-- **Changing sort between pages:** don't. Cursor is only valid for the sort it was issued with. Document this.
+- **Changing sort between pages:** don't. A cursor is only valid for the sort it was issued with. If a client sends a cursor with a different `sort` than the one it was issued for, return `400` (`QUERY.CURSOR_SORT_MISMATCH`).
 - **Backward pagination (prev):** harder; use a separate `prevCursor` if really needed. Most apps only need forward.
-- **Exact totals on cursor endpoints:** usually omit them. If the product truly needs totals, measure the extra query cost and justify it.
-- **Large reports/exports:** avoid pretending they are normal paginated browsing if users really need a complete downloadable result.
+- **Exact totals on cursor endpoints:** usually omit them. If the product truly needs totals, measure the extra query cost and justify it; consider an estimated count (`pg_class.reltuples`, `EXPLAIN`-derived) when "approximate" is acceptable.
+- **Large reports/exports:** avoid pretending they are normal paginated browsing if users really need a complete downloadable result. Use an async export job instead.
 
 ## Good vs bad
 
@@ -425,13 +590,17 @@ used without proving page-number UX is needed, no limit bound.
 
 - No pagination at all (`SELECT *` then return the array).
 - Ridiculous max limit (`limit=10000`).
+- Flat filter params without `filter[]` namespacing — collides with `limit`, `cursor`, `sort`, `search`.
 - Filter param names matching DB columns without whitelist.
-- `ORDER BY` on user-supplied column without whitelist.
+- `ORDER BY` on user-supplied column without whitelist; or interpolating direction from raw input.
 - `total` count on cursor endpoints — expensive; unnecessary; omit.
 - Breaking cursors on schema change without a migration plan.
 - Cursor payload and seek predicate not matching the active sort tuple.
+- Tuple-comparison shorthand (`(a, b) < (x, y)`) on a mixed-direction sort.
+- Silently treating an undecodable cursor as "first page" instead of returning `400`.
 - Offset on a high-write sequential list where users do not need page numbers.
 - Choosing pagination style by endpoint stereotype (`admin`, `catalog`, `feed`) instead of real requirements.
+- Disabling `forbidNonWhitelisted` so the API tolerates unknown query params.
 
 ## Code review checklist
 
@@ -439,11 +608,16 @@ used without proving page-number UX is needed, no limit bound.
 - [ ] Pagination choice is justified by UX + consistency + scale requirements, not endpoint label alone
 - [ ] Cursor/keyset lists have a stable unique sort key (with tie-breaker where needed)
 - [ ] If cursor/keyset sorting is configurable, cursor payload, seek predicate, and index all match the active sort tuple
+- [ ] Mixed-direction sorts use the OR-expanded seek predicate (or are forbidden by the DTO)
 - [ ] Offset endpoints really need page-number/random-access UX, and the query cost is acceptable at realistic depth
-- [ ] Filters whitelisted via DTO with `@IsEnum`, `@IsDateString`, etc.
-- [ ] Sort fields whitelisted; direction parsed safely
+- [ ] Filters live under a nested `filter` DTO with `@ValidateNested` + `@Type`; each field is whitelisted (`@IsEnum`, `@IsDateString`, etc.)
+- [ ] `ValidationPipe` is configured with `whitelist: true` and `forbidNonWhitelisted: true`
+- [ ] Sort param has a format `@Matches` regex at the DTO boundary AND a field allowlist in the service
+- [ ] API → SQL column name mapping goes through a static map; direction is one of two literals
 - [ ] Composite indexes exist for the sort + common filters
 - [ ] `meta.pagination` always present on list responses
+- [ ] Malformed cursor returns `400` (`QUERY.INVALID_CURSOR`), not a silent reset
+- [ ] Out-of-range offset page returns `200` with `data: []` and echoes the requested `page`
 - [ ] No raw SQL concatenation of query params
 
 ## See also

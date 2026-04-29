@@ -89,21 +89,17 @@ with reviewers and tests.
 
 ## Should I write a test?
 
-```
-Is it a controller?
-├── Yes → e2e test always (covers the full chain)
-└── No →
-    Is it a service?
-    ├── With branching / conditional logic → unit test always
-    └── Pure pass-through (findById, delegation only) → skip unit; e2e covers it
-└── Is it a repository / ORM call?
-    ├── With a non-trivial query (joins, CTEs, window) → integration test with real DB
-    └── Simple CRUD → skip; e2e covers it
-└── Is it a pure utility?
-    ├── Yes → unit test (cheap, high value)
-└── Is it a DTO, type, interface?
-    └── No test (the compiler is the test)
-```
+Match the kind of code, top to bottom — the first row that fits decides the test strategy.
+
+| Kind of code                                              | Test strategy                                |
+|-----------------------------------------------------------|----------------------------------------------|
+| Controller                                                | e2e test always (covers the full chain)      |
+| Service with branching / conditional logic                | unit test always                             |
+| Service that's pure pass-through (`findById`, delegation) | skip unit; e2e covers it                     |
+| Repository with a non-trivial query (joins, CTEs, window) | integration test with a real DB              |
+| Repository doing simple CRUD                              | skip; e2e covers it                          |
+| Pure utility                                              | unit test (cheap, high value)                |
+| DTO, type, interface                                      | no test (the compiler is the test)           |
 
 **Skip tests when:**
 - It's a one-line delegation (`async findById(id) { return this.repo.findById(id); }`)
@@ -126,8 +122,8 @@ Do I have a concrete, repeated use case RIGHT NOW?
     ├── Yes → helper function in utils/
     └── No →
         Is the varying behavior along one axis (strategy)?
-        ├── Yes → interface + 2+ implementations (DI strategy pattern)
-        └── Depends on many axes → reconsider. Often the concept is two separate things.
+        ├── Yes (one axis) → interface + 2+ implementations (DI strategy pattern)
+        └── No (many axes) → reconsider. Often the concept is two separate things.
 ```
 
 **"YAGNI" rule:** three similar lines is fine. Wait until the fourth before extracting.
@@ -165,7 +161,7 @@ Is it a secret (API key, DB password)?
 ```
 
 Every env var must appear in `.env.example` and be validated by the Zod schema at boot.
-See `20-configuration.md`.
+See [`20-configuration.md`](./20-configuration.md).
 
 ## Should I return null or throw?
 
@@ -222,13 +218,13 @@ Is the code already deployed to any environment?
     └── No → edit in place (but double-check before pushing)
 ```
 
-See `15-migrations.md`. Once a migration has run anywhere (including a teammate's local DB
-that synced from your branch), it's immutable.
+See [`15-migrations.md`](./15-migrations.md). Once a migration has run anywhere (including a
+teammate's local DB that synced from your branch), it's immutable.
 
 ## Should I cache this?
 
 ```
-Is the read rate ≫ the write rate, and is the underlying read expensive?
+Is the read rate >> the write rate, and is the underlying read expensive?
 ├── No → don't cache. Premature cache = stale data bugs.
 └── Yes →
     Do I have a clear invalidation trigger (write-through, TTL, event)?
@@ -242,11 +238,10 @@ Cache only the hot read paths. Never cache auth decisions, quotas, or money.
 
 ```
 Is the rollout risky or per-user variable?
-├── Yes → feature flag (GrowthBook, Unleash, or simple env + user allowlist)
-└── No →
-    Will the flag be removed within 2 weeks of full rollout?
-    ├── Yes → flag OK
-    └── No → don't add it. Unremoved flags become config that nobody remembers.
+├── Yes → feature flag (GrowthBook, Unleash, or simple env + user allowlist).
+│         Add it only if you'll remove it within ~2 weeks of full rollout —
+│         unremoved flags become config that nobody remembers.
+└── No → no flag. Ship the change directly.
 ```
 
 ## Red flags — if you see these, stop and reconsider

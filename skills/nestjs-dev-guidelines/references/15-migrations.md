@@ -44,7 +44,9 @@ exports.shorthands = undefined;
 
 exports.up = (pgm) => {
   pgm.createTable('payments', {
-    id: { type: 'uuid', primaryKey: true, default: pgm.func('gen_uuid_v7()') },
+    // UUIDv7 needs Postgres 18+ OR the `pg_uuidv7` extension. On older versions,
+    // use `gen_random_uuid()` from pgcrypto, or generate the id in app code.
+    id: { type: 'uuid', primaryKey: true, default: pgm.func('gen_random_uuid()') },
     user_id: { type: 'uuid', notNull: true, references: 'users(id)', onDelete: 'RESTRICT' },
     amount_cents: { type: 'bigint', notNull: true, check: 'amount_cents >= 0' },
     status: { type: 'text', notNull: true, check: `status IN ('pending','paid','refunded','canceled')` },
@@ -74,24 +76,45 @@ npx prisma migrate deploy                             # prod: apply committed mi
 - Commit the generated `migrations/` folder.
 - **Never** edit generated SQL after `migrate dev` runs. If you need changes, create a follow-up migration with `--create-only` and edit that one.
 
-### TypeORM
+### TypeORM (0.3.x)
+
+The legacy `-n` flag was removed in TypeORM 0.3 — pass the migration **path** as the
+positional argument, and the data source via `-d`:
 
 ```bash
-npm run typeorm migration:generate -- -n AddPaymentsTable
-npm run typeorm migration:run
-npm run typeorm migration:revert     # dev only
+# generate (diff entities → migration)
+npx typeorm-ts-node-commonjs migration:generate src/migrations/AddPaymentsTable -d src/data-source.ts
+
+# create (empty migration to write by hand)
+npx typeorm-ts-node-commonjs migration:create src/migrations/AddPaymentsTable
+
+# apply / revert
+npx typeorm-ts-node-commonjs migration:run -d src/data-source.ts
+npx typeorm-ts-node-commonjs migration:revert -d src/data-source.ts   # dev only
 ```
 
 - Generated from entity diff — review carefully, don't trust blindly.
 - Check indexes, constraint names, nullability.
+- Never set `synchronize: true` on the production data source.
 
-### Drizzle
+### Drizzle (drizzle-kit ≥ 0.20)
+
+The `:pg` suffix and `push:pg` commands are gone. Dialect is configured in
+`drizzle.config.ts` (`dialect: 'postgresql'`), and the CLI is dialect-agnostic:
 
 ```bash
-npx drizzle-kit generate:pg --name add_payments_table
-npx drizzle-kit push:pg                    # dev
-# for prod: apply SQL via your own runner or drizzle-orm/migrator
+# generate SQL from schema diff
+npx drizzle-kit generate --name=add_payments_table
+
+# apply migrations (prod-safe runner)
+npx drizzle-kit migrate
+
+# dev-only: push schema directly without generating files
+npx drizzle-kit push
 ```
+
+- Commit the generated `drizzle/` folder.
+- For programmatic apply in app code, use `drizzle-orm/<driver>/migrator`'s `migrate()`.
 
 ## Zero-downtime changes
 
@@ -100,10 +123,16 @@ Split into phases. Each phase is a migration or deploy by itself.
 
 ### Add a NOT NULL column to an existing table
 
-1. Migration: add column as nullable.
+1. Migration: add column as nullable. Don't set a non-volatile default on a large table — Postgres rewrites the whole table. Use `ALTER TABLE … ADD COLUMN … DEFAULT …` only when you understand the rewrite cost (PG 11+ skips the rewrite for **constant** defaults, but expressions like `now()` still rewrite).
 2. Deploy: code reads both (old behavior if null, new if present) and writes the new column.
-3. Migration: backfill — `UPDATE table SET new_col = default_for(row) WHERE new_col IS NULL`. Batch by 1000 rows at a time if the table is big.
-4. Migration: set `NOT NULL` + default if desired.
+3. **Backfill out-of-band**, not inside a transactional migration. Most ORM runners wrap the whole migration in `BEGIN … COMMIT`, so a single `UPDATE` and a chunked loop both hold locks until the end. Run the backfill from a script (`commands/`) or a dedicated migration with the runner's transaction disabled, in batches of 1k–10k rows with a short sleep between batches:
+   ```sql
+   UPDATE payments SET new_col = default_for(row)
+   WHERE id IN (
+     SELECT id FROM payments WHERE new_col IS NULL ORDER BY id LIMIT 5000 FOR UPDATE SKIP LOCKED
+   );
+   ```
+4. Migration: `ALTER TABLE … ALTER COLUMN new_col SET NOT NULL` only after the backfill verifies zero NULLs.
 5. Deploy: clean up "both" reads.
 
 ### Rename a column
@@ -134,6 +163,48 @@ still serving traffic.
 - Prefer `CONCURRENTLY` for index creation in Postgres.
 - Break data migrations into chunks; run outside peak.
 - For 10M+ row updates, consider a dedicated backfill job rather than a migration step.
+
+## Lock and statement timeouts
+
+Migrations that wait indefinitely for a lock can take down a hot table. Always set
+short timeouts at the top of any DDL migration so a blocked statement fails fast and
+gets retried, instead of queueing behind a long-running query and blocking every
+incoming write:
+
+```sql
+SET lock_timeout = '5s';
+SET statement_timeout = '30s';
+
+ALTER TABLE payments ADD COLUMN refunded_at timestamptz;
+```
+
+- `lock_timeout` aborts if the statement can't acquire its lock in time.
+- `statement_timeout` aborts a statement that's running too long.
+- These are **session-local** — set them inside the migration, not on the role, so
+  long-running maintenance scripts can opt out.
+- For the runner-level guarantee, also configure `idle_in_transaction_session_timeout`
+  on the migration role.
+
+## Adding a foreign key to a large table
+
+`ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY …` takes an `ACCESS EXCLUSIVE` lock on
+both the referencing and referenced tables while it scans every row. On a hot table
+this is a multi-minute outage. Split it:
+
+```sql
+-- Phase 1: add the constraint without scanning. Brief lock only.
+ALTER TABLE payments
+  ADD CONSTRAINT fk_payments_user
+  FOREIGN KEY (user_id) REFERENCES users(id)
+  NOT VALID;
+
+-- Phase 2 (separate migration, after phase 1 has been deployed):
+-- validate without blocking writes — only takes a SHARE UPDATE EXCLUSIVE lock.
+ALTER TABLE payments VALIDATE CONSTRAINT fk_payments_user;
+```
+
+`NOT VALID` means the constraint is enforced for *new* rows but the existing rows
+aren't checked. `VALIDATE CONSTRAINT` then scans the table without blocking writes.
 
 ## Check constraints
 
@@ -217,6 +288,9 @@ Before `DROP TABLE`, `DROP COLUMN`, `TRUNCATE`:
 - Dropping a column and the code that uses it in the same deploy.
 - Creating indexes without `CONCURRENTLY` on hot tables.
 - Running a big data update inside a transactional migration that holds locks.
+- Adding a foreign key to a large table in one shot (without `NOT VALID` + `VALIDATE`).
+- Running DDL without `lock_timeout` / `statement_timeout`.
+- Concurrent runners racing on the same DB without an advisory lock — always serialize migrations with `pg_advisory_lock` (most runners do this for you, but verify).
 - `synchronize: true` in production (TypeORM).
 - Numbering migrations with integers that collide on rebase.
 - Skipping staging tests "because the change is small."
@@ -229,8 +303,10 @@ Before `DROP TABLE`, `DROP COLUMN`, `TRUNCATE`:
 - [ ] Timestamp-prefix naming
 - [ ] Destructive steps split across deploys (add → backfill → switch → drop)
 - [ ] Large indexes use `CONCURRENTLY`
-- [ ] Check constraints added with `NOT VALID` + VALIDATE for large tables
-- [ ] Backfill logic chunked if large
+- [ ] Check constraints AND foreign keys on large tables added with `NOT VALID` + `VALIDATE`
+- [ ] `lock_timeout` and `statement_timeout` set at the top of DDL migrations
+- [ ] Backfills run as a separate script or non-transactional migration, chunked
+- [ ] No table-rewriting `ADD COLUMN … DEFAULT <volatile>` on a large table
 - [ ] Tested on staging with realistic size
 - [ ] No `synchronize: true` or equivalent in prod config
 

@@ -8,7 +8,7 @@ when working on that kind of code.
 
 | Skill | What it does |
 |---|---|
-| [`nestjs-dev-guidelines`](./skills/nestjs-dev-guidelines/) | Senior NestJS / Node.js backend engineer: folder structure, naming, code quality, API design, DB design, security, auth, pagination, error handling, testing, AI product patterns (LLM gateway, SSE, usage metering), code review rules. SKILL.md + 31 granular reference files. |
+| [`nestjs-dev-guidelines`](./skills/nestjs-dev-guidelines/) | Senior NestJS / Node.js backend engineer: folder structure, naming, code quality, API design, DB design, security, auth, multi-tenancy, caching, health/readiness/shutdown, pagination, error handling, testing, source-freshness checks, AI product patterns (LLM gateway, SSE, usage metering), code review rules. SKILL.md + 41 granular reference files. |
 
 (More skills planned — `react-frontend-guidelines`, `expo-mobile-guidelines`, etc.)
 

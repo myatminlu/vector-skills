@@ -57,6 +57,10 @@ export class WelcomeEmailProducer {
         removeOnFail: { age: 24 * 3600 },
       },
     );
+    // Note: jobId dedupe only holds while the job exists in Redis. Once
+    // removeOnComplete evicts it (1h here), a second add with the same id
+    // will succeed. For permanent idempotency, pair this with an inbox table
+    // or an idempotent side effect — see "Idempotency" below.
   }
 }
 ```
@@ -84,10 +88,27 @@ export class EmailWorker extends WorkerHost {
 - Dev: worker and API run in same Node process (OK for small volumes).
 - Prod: **separate worker process(es)**. API container does not register workers. Scale workers independently.
 
+One image, two entrypoints. Pick the command at deploy time:
+
+```yaml
+# docker-compose.yml (illustrative)
+services:
+  web:
+    image: myapp:latest
+    command: ["node", "dist/main.js"]
+  worker:
+    image: myapp:latest
+    command: ["node", "dist/worker.js"]
+```
+
 ```dockerfile
-# one image, two commands
-CMD: web → node dist/main.js
-CMD: worker → node dist/worker.js
+# Dockerfile — single image, no CMD; the orchestrator chooses the entrypoint
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY dist ./dist
+# CMD is intentionally omitted; set it per service in compose / k8s manifest.
 ```
 
 ## Idempotency
@@ -95,7 +116,7 @@ CMD: worker → node dist/worker.js
 **Every job handler must be safe to run twice.**
 
 Strategies:
-- **Natural key** — `jobId: \`welcome:${userId}\`` — BullMQ refuses a second enqueue with same id.
+- **Natural key** — ``jobId: `welcome:${userId}` `` — BullMQ refuses a second enqueue with the same id while the job still exists in Redis.
 - **Inbox** — `processed_jobs(job_id, completed_at)` — handler inserts unique row first; if conflict, exit.
 - **Idempotent side effect** — `UPDATE users SET welcomed = true WHERE id = $1 AND welcomed = false` is naturally idempotent.
 
@@ -109,6 +130,8 @@ Why it matters: retries, duplicate publisher, worker crash mid-job — all cause
 - Do not retry on errors that will never succeed (`NonRetryableError`): bad input, permanently missing resource.
 
 ```ts
+import { UnrecoverableError } from 'bullmq';
+
 try {
   await this.stripe.charge(...);
 } catch (e) {
@@ -120,7 +143,8 @@ try {
 }
 ```
 
-BullMQ stops retrying on `UnrecoverableError`.
+BullMQ stops retrying on `UnrecoverableError`. Verify the import path against the
+installed BullMQ major — see [`35-source-of-truth-freshness.md`](./35-source-of-truth-freshness.md).
 
 ## Dead-letter queue (DLQ)
 
@@ -178,7 +202,12 @@ Stay within upstream quotas (e.g., LLM provider, email sender).
 - bull-board exposes a dashboard; gate behind admin auth.
 
 ```ts
-import { ExpressAdapter, createBullBoard, BullMQAdapter } from '@bull-board/...';
+// Install: @bull-board/api @bull-board/express
+// Verify exact subpaths against the installed major; package layout has shifted
+// across versions — see `35-source-of-truth-freshness.md`.
+import { createBullBoard } from '@bull-board/api';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
+import { ExpressAdapter } from '@bull-board/express';
 
 const adapter = new ExpressAdapter();
 adapter.setBasePath('/admin/queues');
@@ -209,14 +238,21 @@ Pick one — don't run both queues in the same project.
 
 ## Outbox → queue
 
-Combine with the outbox pattern (see `18-events.md`):
+Combine with the outbox pattern (see [`18-events.md`](./18-events.md)):
 
 1. Transaction writes domain change + outbox row.
-2. Outbox poller reads pending rows.
-3. Poller enqueues a BullMQ job for each row.
-4. Worker handles the job; on success, mark outbox row published.
+2. Outbox poller reads pending rows (`SELECT ... FOR UPDATE SKIP LOCKED`).
+3. Poller enqueues a BullMQ job for each row, then marks the outbox row as published.
+4. Worker handles the job. Worker uses its own idempotency (jobId / inbox / idempotent side
+   effect) to tolerate retries — it does **not** write back to the outbox table.
 
-This gives: exactly-once semantics against the DB, durable events even on process crash.
+This gives: at-least-once delivery with idempotent processing (effectively-once when handlers
+are idempotent), and durable events even on process crash. True exactly-once is not achievable
+across a DB + queue boundary — design handlers accordingly.
+
+> Keep the outbox table owned by the publishing module. Workers consuming jobs should not
+> need to know the outbox exists — they only see the job payload. This matches the boundary
+> rule in [`18-events.md`](./18-events.md).
 
 ## When to queue vs inline
 
@@ -249,17 +285,47 @@ await queue.add('task', { userId, orgId, traceId, locale });
 
 ## Graceful shutdown
 
-Workers must drain on SIGTERM:
+Workers must drain on SIGTERM. In NestJS, enable framework shutdown hooks so a single
+coordinator owns the sequence (see [`34-health-shutdown.md`](./34-health-shutdown.md) —
+"one shutdown coordinator").
 
 ```ts
-process.on('SIGTERM', async () => {
-  await worker.close();      // stops accepting new, waits for current jobs
+// worker bootstrap (e.g. dist/worker.js)
+const app = await NestFactory.createApplicationContext(WorkerModule);
+app.enableShutdownHooks();   // Nest listens for SIGTERM/SIGINT and runs the lifecycle chain
+```
+
+`@nestjs/bullmq` registers `OnModuleDestroy` on `WorkerHost` and on each `Queue`, so worker
+drain and queue close happen automatically — do **not** add a second handler that closes them
+again. Only add `OnApplicationShutdown` when you need extra logic around drain (e.g. flip a
+readiness flag first, wait for the load balancer, then let the modules close):
+
+```ts
+@Injectable()
+export class DrainCoordinator implements OnApplicationShutdown {
+  constructor(private readonly readiness: ReadinessService) {}
+
+  async onApplicationShutdown(signal?: string) {
+    this.readiness.setReady(false);          // stop new traffic / probes
+    await sleep(this.config.drainGraceMs);   // let LB stop routing
+    // Nest will now tear modules down; @nestjs/bullmq closes worker + queue.
+  }
+}
+```
+
+If the worker entrypoint is **not** a Nest application (a plain BullMQ `Worker`), use exactly
+one signal handler — never two racing:
+
+```ts
+process.once('SIGTERM', async () => {
+  await worker.close();   // stops accepting new, waits for in-flight
   await queue.close();
   process.exit(0);
 });
 ```
 
-Deploys that kill workers mid-job lead to duplicates when retries kick in — idempotency saves you, but cleaner shutdowns reduce noise.
+Deploys that kill workers mid-job lead to duplicates when retries kick in — idempotency saves
+you, but cleaner shutdowns reduce noise.
 
 ## Good vs bad
 
@@ -325,3 +391,5 @@ async signUp(dto: SignUpDto) {
 - [`18-events.md`](./18-events.md) — outbox + job enqueue
 - [`22-observability.md`](./22-observability.md) — queue metrics
 - [`10-error-handling.md`](./10-error-handling.md) — retry vs non-retryable
+- [`34-health-shutdown.md`](./34-health-shutdown.md) — worker drain, readiness, shutdown coordinator
+- [`35-source-of-truth-freshness.md`](./35-source-of-truth-freshness.md) — verify BullMQ / bull-board package paths against the installed version

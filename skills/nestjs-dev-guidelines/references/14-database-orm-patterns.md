@@ -6,7 +6,7 @@
 - Whatever the stack, follow `13-database-design.md` conventions (snake_case DB, camelCase app).
 - Parameterize every query. Never string-concat user input.
 - A repository / data-access layer hides the ORM behind stable interfaces. Services depend on the repository, not the ORM directly.
-- Transactions are explicit; avoid "auto-transactions" except for single queries.
+- Transactions are explicit. Wrap multi-statement writes in a transaction block; rely on the driver's per-statement implicit transaction only for single queries.
 
 ## Quick comparison
 
@@ -155,13 +155,13 @@ export class User {
 ```ts
 @Module({
   imports: [TypeOrmModule.forFeature([User])],
-  providers: [UserService],
+  providers: [UserRepository],
+  exports: [UserRepository],
 })
 export class UserModule {}
 
-// service
 @Injectable()
-export class UserService {
+export class UserRepository {
   constructor(@InjectRepository(User) private readonly users: Repository<User>) {}
 
   findById(id: string) {
@@ -175,7 +175,7 @@ export class UserService {
 ```ts
 await this.dataSource.transaction(async (manager) => {
   const user = await manager.save(User, { email, name });
-  await manager.save(Membership, { userId: user.id, ... });
+  await manager.save(Membership, { userId: user.id, organizationId, role: 'member' });
 });
 ```
 
@@ -228,9 +228,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   async onModuleDestroy() { await this.$disconnect(); }
 }
 
-// service
 @Injectable()
-export class UserService {
+export class UserRepository {
   constructor(private readonly prisma: PrismaService) {}
   findById(id: string) {
     return this.prisma.user.findFirst({ where: { id, deletedAt: null } });
@@ -251,7 +250,7 @@ await this.prisma.$transaction(async (tx) => {
 
 - Soft delete is not built-in — use `where: { deletedAt: null }` manually or Prisma middleware.
 - Migrations lock the table — plan for large data. See `15`.
-- `$queryRaw` requires the tagged-template form for safety: `$queryRaw\`SELECT ... ${id}\`\`.
+- `$queryRaw` requires the tagged-template form for safety: `` `$queryRaw`SELECT ... ${id}` ``. Use `$queryRawUnsafe` only with manually parameterized values.
 - Prisma generates types on schema change — commit the generated client or run `prisma generate` in CI.
 
 ## Drizzle
@@ -260,7 +259,8 @@ await this.prisma.$transaction(async (tx) => {
 
 ```ts
 // modules/user/schema.ts
-import { pgTable, uuid, varchar, text, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, uuid, varchar, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const users = pgTable(
   'users',
@@ -282,12 +282,43 @@ export type UserRow = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 ```
 
-### Service
+### Module wiring
 
 ```ts
+// core/database/drizzle.module.ts
+import { Global, Module } from '@nestjs/common';
+import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
+
+export const DRIZZLE = Symbol('DRIZZLE');
+export type Database = NodePgDatabase;
+
+@Global()
+@Module({
+  providers: [
+    {
+      provide: DRIZZLE,
+      useFactory: (env: Env) => {
+        const pool = new Pool({ connectionString: env.DATABASE_URL });
+        return drizzle(pool);
+      },
+      inject: [ENV],
+    },
+  ],
+  exports: [DRIZZLE],
+})
+export class DrizzleModule {}
+```
+
+### Repository
+
+```ts
+import { and, eq, isNull } from 'drizzle-orm';
+import { users } from './schema';
+
 @Injectable()
-export class UserService {
-  constructor(@Inject(DRIZZLE) private readonly db: NodePgDatabase) {}
+export class UserRepository {
+  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   async findById(id: string): Promise<User | null> {
     const [row] = await this.db
@@ -321,9 +352,13 @@ await this.db.transaction(async (tx) => {
 // ❌ service uses ORM directly, leaks schema details
 @Injectable()
 export class OrderService {
-  constructor(@InjectRepository(Order) private readonly orders: Repository<Order>) {}
-  create(dto: CreateOrderDto) {
-    return this.orders.save({ ...dto, customerJoinedThingy: ... });
+  constructor(
+    @InjectRepository(Order) private readonly orders: Repository<Order>,
+    @InjectRepository(Customer) private readonly customers: Repository<Customer>,
+  ) {}
+  async create(dto: CreateOrderDto) {
+    const customer = await this.customers.findOneOrFail({ where: { id: dto.customerId } });
+    return this.orders.save({ ...dto, customer, status: 'pending' });
   }
 }
 
@@ -363,7 +398,7 @@ Repository can be mocked in tests; the ORM choice can change later.
 ### Connection pooling
 
 - Always through a pool (`pg.Pool`, `DataSource`, `PrismaClient` internal pool).
-- Size: start with `CPU × 2` per instance; measure. Too many connections hurts Postgres.
+- Size from the DB side, not the app side. Total connections across all instances should fit Postgres `max_connections` with headroom for migrations / admin sessions. A common starting point is `(DB_cores × 2) + effective_spindles` total, divided across instances. Front Postgres with PgBouncer when instance count grows.
 - Release connections promptly; use try/finally around `client.release()` in raw pg.
 
 ### Logging SQL
@@ -378,7 +413,12 @@ Repository can be mocked in tests; the ORM choice can change later.
 
 ```ts
 const user = await this.users.findById(id);
-if (!user) throw new NotFoundException({ code: 'USER.NOT_FOUND' });
+if (!user) {
+  throw new NotFoundException({
+    code: 'USER.NOT_FOUND',
+    message: 'User not found.',
+  });
+}
 ```
 
 ### Bad (service reaching into ORM)

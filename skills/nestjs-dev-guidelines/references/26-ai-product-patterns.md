@@ -40,7 +40,7 @@ export interface LlmMessage {
 }
 
 export interface LlmCallInput {
-  model: string;                       // 'claude-sonnet-4-6' | 'gpt-4o' | ...
+  model: string;                       // provider model id or internal alias; verify against current docs/config
   messages: LlmMessage[];
   maxTokens?: number;
   temperature?: number;
@@ -48,16 +48,29 @@ export interface LlmCallInput {
   responseFormat?: 'text' | 'json_object' | 'json_schema';
   jsonSchema?: unknown;
   stream?: boolean;
-  metadata?: { userId?: string; orgId?: string; traceId?: string };
+  metadata?: {
+    userId?: string;
+    orgId?: string;            // project convention; gateway maps to organizationId at the boundary
+    traceId?: string;
+    feature?: string;          // 'chat' | 'summarize' | 'agent.plan'
+    promptName?: string;       // for usage attribution
+    promptVersion?: number;
+  };
 }
 
 export interface LlmCallResult {
   text: string;
   toolCalls?: LlmToolCall[];
-  usage: { inputTokens: number; outputTokens: number; totalTokens: number };
-  costCents: number;
+  usage: {
+    inputTokens: number;                 // UNCACHED input only (non-overlapping with cache buckets); see `28` for provider mapping
+    outputTokens: number;
+    totalTokens: number;                 // inputTokens + cacheReadInputTokens + cacheWriteInputTokens + outputTokens
+    cacheReadInputTokens?: number;       // prompt-cache HIT (discounted rate)
+    cacheWriteInputTokens?: number;      // prompt-cache WRITE (premium on Anthropic)
+  };
+  costMicroUsd: bigint;                  // 1 USD = 1,000,000 micro USD; matches `28`'s schema
   model: string;
-  stopReason: 'end_turn' | 'max_tokens' | 'tool_use' | 'error';
+  stopReason: 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence' | 'pause_turn' | 'error' | 'other';
   latencyMs: number;
 }
 
@@ -83,35 +96,58 @@ export class LlmService {
     @Inject(LLM_PROVIDERS) providers: LlmProvider[],
     private readonly usage: UsageMeteringService,
     private readonly quota: QuotaService,
-    private readonly logger: PinoLogger,
+    @InjectPinoLogger(LlmService.name) private readonly logger: PinoLogger,
   ) {
     for (const p of providers) this.providers.set(p.name, p);
   }
 
   async call(input: LlmCallInput): Promise<LlmCallResult> {
-    const { userId, orgId } = input.metadata ?? {};
-    if (userId) await this.quota.assertWithin(userId, input.model);
+    const meta = input.metadata ?? {};
+    // Quota enforcement runs at both user and org scope; either may be omitted. See `28`.
+    if (meta.userId || meta.orgId) {
+      await this.quota.assertWithin({ userId: meta.userId, organizationId: meta.orgId });
+    }
 
     const provider = this.providerFor(input.model);
     const started = Date.now();
 
-    let result: LlmCallResult;
+    let result: LlmCallResult | undefined;
+    let outcome: 'success' | 'error' | 'timeout' | 'aborted' = 'success';
+    let errorCode: string | undefined;
     try {
-      result = await this.withRetry(() => provider.call(input));
+      try {
+        result = await this.withRetry(() => provider.call(input));
+      } catch (e) {
+        this.logger.warn({ err: e, model: input.model }, 'llm primary failed');
+        result = await this.fallback(input);
+      }
+      return result;
     } catch (e) {
-      this.logger.warn({ err: e, model: input.model }, 'llm primary failed');
-      result = await this.fallback(input);
+      outcome = classifyOutcome(e);     // 'error' | 'timeout' | 'aborted'
+      errorCode = errorCodeOf(e);
+      throw e;
+    } finally {
+      // Record on success AND failure — providers often charge for attempted calls.
+      // `record()` enqueues; the worker writes the row. See `28` for the queue + rollup design.
+      await this.usage.record({
+        userId: meta.userId,
+        organizationId: meta.orgId,           // map caller convention → DB column convention
+        provider: provider.name,
+        model: result?.model ?? input.model,
+        promptName: meta.promptName,
+        promptVersion: meta.promptVersion,
+        inputTokens: result?.usage.inputTokens ?? 0,
+        cacheReadInputTokens: result?.usage.cacheReadInputTokens ?? 0,
+        cacheWriteInputTokens: result?.usage.cacheWriteInputTokens ?? 0,
+        outputTokens: result?.usage.outputTokens ?? 0,
+        costMicroUsd: result?.costMicroUsd ?? 0n,
+        latencyMs: Date.now() - started,
+        outcome,
+        errorCode,
+        traceId: meta.traceId,
+        feature: meta.feature,
+      });
     }
-
-    await this.usage.record({
-      userId, orgId, model: result.model, provider: provider.name,
-      inputTokens: result.usage.inputTokens,
-      outputTokens: result.usage.outputTokens,
-      costCents: result.costCents,
-      latencyMs: Date.now() - started,
-    });
-
-    return result;
   }
 
   private async withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
@@ -121,27 +157,43 @@ export class LlmService {
       catch (e) {
         last = e;
         if (isNonRetryable(e)) throw e;
-        await sleep(500 * 2 ** i);
+        if (i === attempts - 1) break;
+        // Honor provider Retry-After (seconds) when present; otherwise exponential backoff with jitter.
+        const retryAfterMs = retryAfterMsFromError(e);
+        const backoffMs = retryAfterMs ?? (500 * 2 ** i + Math.floor(Math.random() * 250));
+        await sleep(backoffMs);
       }
     }
     throw last;
   }
 
   private async fallback(input: LlmCallInput): Promise<LlmCallResult> {
-    // e.g. primary: claude-opus → fallback: claude-sonnet; or primary: anthropic → fallback: openai
+    // e.g. primary_reasoning → balanced → low_cost, or provider_a → provider_b for availability
     const fallbackModel = FALLBACKS[input.model];
-    if (!fallbackModel) throw new AppException(503, { code: 'LLM.UPSTREAM_DOWN', message: 'AI provider unavailable' });
+    if (!fallbackModel) throw new ServiceUnavailableException({ code: 'LLM.UPSTREAM_DOWN', message: 'AI provider unavailable' });
     const provider = this.providerFor(fallbackModel);
     return provider.call({ ...input, model: fallbackModel });
   }
 
-  private providerFor(model: string): LlmProvider {
+  // Public so callers (e.g. SSE service in `27`) can attribute usage to the right provider.
+  providerFor(model: string): LlmProvider {
     for (const p of this.providers.values()) {
       if (p.supportedModels.includes(model)) return p;
     }
-    throw new Error(`Unknown model ${model}`);
+    throw new BadGatewayException({
+      code: 'LLM.UNKNOWN_MODEL',
+      message: `No provider configured for model "${model}"`,
+    });
   }
 }
+
+// ── Helpers expected to live next to LlmService ───────────────────────────────
+// Implement these against your provider's error shape; keep them small & pure.
+declare function isNonRetryable(e: unknown): boolean;        // 400 / 401 / 403 / token-limit
+declare function retryAfterMsFromError(e: unknown): number | undefined;
+declare function classifyOutcome(e: unknown): 'error' | 'timeout' | 'aborted';
+declare function errorCodeOf(e: unknown): string | undefined;
+declare function sleep(ms: number): Promise<void>;
 ```
 
 ## Timeouts
@@ -165,9 +217,9 @@ Define chains per concern, not per model:
 
 ```ts
 const FALLBACKS: Record<string, string> = {
-  'claude-opus-4-7': 'claude-sonnet-4-6',
-  'claude-sonnet-4-6': 'claude-haiku-4-5-20251001',
-  'gpt-4o': 'gpt-4o-mini',
+  primary_reasoning: 'balanced_text',
+  balanced_text: 'low_cost_text',
+  provider_a_balanced: 'provider_b_balanced',
 };
 ```
 
@@ -184,29 +236,63 @@ const SummarySchema = z.object({
   tone: z.enum(['positive', 'neutral', 'negative']),
 });
 
-async summarize(text: string) {
-  const raw = await this.llm.call({
-    model: 'claude-sonnet-4-6',
-    messages: [...],
-    responseFormat: 'json_object',
-  });
+// Reusable helper — keep next to LlmService in `integrations/llm/`.
+export async function callJsonWithRepair<T extends z.ZodTypeAny>(
+  llm: LlmService,
+  input: LlmCallInput,
+  schema: T,
+): Promise<z.infer<T>> {
+  const raw = await llm.call({ ...input, responseFormat: 'json_object' });
+  const first = tryParse(schema, raw.text);
+  if (first.ok) return first.data;
 
-  const parsed = SummarySchema.safeParse(JSON.parse(raw.text));
-  if (!parsed.success) {
-    // One repair attempt: send the error back and ask for valid JSON
-    const fixed = await this.llm.call({
-      model: 'claude-sonnet-4-6',
+  // One repair attempt: feed the schema error back and ask for valid JSON.
+  const fixed = await llm.call({
+    ...input,
+    responseFormat: 'json_object',
+    messages: [
+      ...input.messages,
+      { role: 'assistant', content: raw.text },
+      { role: 'user', content: `Invalid output. Fix to match schema: ${first.error}` },
+    ],
+  });
+  const second = tryParse(schema, fixed.text);
+  if (second.ok) return second.data;
+
+  throw new BadGatewayException({
+    code: 'LLM.INVALID_OUTPUT',
+    message: 'Upstream model returned invalid output.',
+    details: second.issues,
+  });
+}
+
+// Wrap JSON.parse so a non-JSON body (e.g. stray prose or a code fence) flows
+// through the same repair path as a schema mismatch instead of throwing uncaught.
+function tryParse<T extends z.ZodTypeAny>(
+  schema: T,
+  text: string,
+): { ok: true; data: z.infer<T> } | { ok: false; error: string; issues?: z.ZodIssue[] } {
+  let json: unknown;
+  try { json = JSON.parse(text); }
+  catch (e) { return { ok: false, error: `Not valid JSON: ${(e as Error).message}` }; }
+  const parsed = schema.safeParse(json);
+  if (parsed.success) return { ok: true, data: parsed.data };
+  return { ok: false, error: parsed.error.message, issues: parsed.error.issues };
+}
+
+// Caller — inside any service that injects LlmService:
+class SummarizerService {
+  constructor(private readonly llm: LlmService) {}
+
+  async summarize(text: string) {
+    return callJsonWithRepair(this.llm, {
+      model: env.LLM_SUMMARY_MODEL,
       messages: [
-        ...originalMessages,
-        { role: 'assistant', content: raw.text },
-        { role: 'user', content: `Invalid output. Fix to match schema: ${parsed.error.message}` },
+        { role: 'system', content: SYSTEM_PROMPT_V2 },
+        { role: 'user', content: text },
       ],
-    });
-    const p2 = SummarySchema.safeParse(JSON.parse(fixed.text));
-    if (!p2.success) throw new AppException(502, { code: 'LLM.INVALID_OUTPUT', details: p2.error.issues });
-    return p2.data;
+    }, SummarySchema);
   }
-  return parsed.data;
 }
 ```
 
@@ -221,7 +307,7 @@ Cheaper option: strict JSON mode + a Zod check + log-and-alert on failures rathe
 ---
 version: 2
 description: 5-bullet summary with tone
-model_preference: claude-sonnet-4-6
+model_preference: summary_balanced
 ---
 
 You are a senior editor. Summarize the following text in exactly 5 bullets...
@@ -231,20 +317,42 @@ You are a senior editor. Summarize the following text in exactly 5 bullets...
 - Track which prompt version was used in usage metering and tracing.
 - A/B new prompt versions behind a feature flag.
 
-### Prompt caching (Anthropic)
+### Prompt caching (provider-specific)
 
-When you call the same system prompt many times with different user messages, use Anthropic's
-prompt caching to reuse server-side state.
+When you call the same system prompt many times with different user messages, reuse server-side
+prompt state. Each provider exposes this differently — opt in inside the **provider adapter**, not
+in feature code, so callers stay provider-agnostic. Verify current pricing and cache semantics
+against the provider's docs before relying on a specific savings percentage.
 
-```ts
-messages: [
-  { role: 'system', content: longStableSystemPrompt, cache_control: { type: 'ephemeral' } },
-  { role: 'user', content: userMessage },
-];
-```
+- **Anthropic** — explicit, ephemeral. `system` is a top-level field (not a `role: 'system'`
+  message) and `cache_control` lives on the block, not the message:
 
-Cache hits save ~90% cost and 50–90% latency on the cached portion. Use aggressively for
-anything > 1k tokens stable.
+  ```ts
+  // inside AnthropicProvider.call(): map LlmCallInput → SDK request
+  await client.messages.create({
+    model,
+    system: [
+      { type: 'text', text: longStableSystemPrompt, cache_control: { type: 'ephemeral' } },
+    ],
+    messages: [{ role: 'user', content: userMessage }],
+    max_tokens: maxTokens,
+  });
+  ```
+
+- **OpenAI** — automatic for prompts above the cache threshold; no API flag required. Keep the
+  stable prefix (system + few-shot examples) at the **start** of the prompt and put per-call
+  variation at the end. Read `usage.prompt_tokens_details.cached_tokens` from the response to
+  attribute savings.
+
+- **Google Gemini** — explicit `cachedContent` resource. Create a cached content handle for the
+  stable system + tools, then reference it on each call (`cached_content: name`). TTL applies, so
+  refresh on rotation.
+
+In every case, expose the cache result through `LlmCallResult.usage` so cost metering can split
+cached vs uncached tokens. Anthropic exposes both `cache_read_input_tokens` (HIT, discounted)
+and `cache_creation_input_tokens` (WRITE, premium) — surface them as `cacheReadInputTokens` and
+`cacheWriteInputTokens` respectively. Providers without a separate write rate (OpenAI, Gemini)
+populate only the read field. See [`28-ai-usage-metering-cost.md`](./28-ai-usage-metering-cost.md).
 
 ## Agents + tool use
 
@@ -315,17 +423,15 @@ export class SummarizerService {
   constructor(private readonly llm: LlmService) {}
 
   async summarize(userId: string, text: string, traceId: string): Promise<Summary> {
-    const result = await this.llm.call({
-      model: 'claude-sonnet-4-6',
+    return callJsonWithRepair(this.llm, {
+      model: env.LLM_SUMMARY_MODEL,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT_V2 },
         { role: 'user', content: text },
       ],
-      responseFormat: 'json_object',
       maxTokens: 1000,
       metadata: { userId, traceId },
-    });
-    return SummarySchema.parse(JSON.parse(result.text));
+    }, SummarySchema);
   }
 }
 ```
@@ -337,13 +443,13 @@ export class SummarizerService {
 export class SummarizerService {
   async summarize(text: string) {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }); // ❌ direct SDK, new client each call
-    const response = await anthropic.messages.create({                           // ❌ no timeout, no retry
-      model: 'claude-3-5-sonnet-latest',                                         // ❌ implicit, unversioned model
+    const response = await anthropic.messages.create({                           // ❌ no timeout, no retry, no fallback
+      model: process.env.MODEL!,                                                 // ❌ unvalidated env, no model whitelist
       max_tokens: 1000,
       messages: [{ role: 'user', content: text }],
     });
-    return JSON.parse((response.content[0] as any).text);                        // ❌ no schema validation
-    // no cost tracking, no observability, no quota check
+    return JSON.parse((response.content[0] as any).text);                        // ❌ no schema validation, throws on non-JSON
+    // ❌ no cost tracking, no observability, no quota check, no PII redaction
   }
 }
 ```
@@ -363,7 +469,7 @@ export class SummarizerService {
 ## Code review checklist
 
 - [ ] Feature code uses `LlmService`, not provider SDKs directly
-- [ ] Model specified as a stable string (no "latest" aliases)
+- [ ] Model is a stable, validated string from a whitelist (no `"latest"` aliases, no raw `process.env.MODEL`)
 - [ ] Timeouts and retries explicit
 - [ ] Fallback configured for primary model
 - [ ] Structured output validated with Zod
@@ -378,4 +484,8 @@ export class SummarizerService {
 - [`27-ai-streaming-sse.md`](./27-ai-streaming-sse.md) — streaming LLM output
 - [`28-ai-usage-metering-cost.md`](./28-ai-usage-metering-cost.md) — cost + quotas
 - [`22-observability.md`](./22-observability.md) — LLM traces
-- `gemini-interactions-api` skill — Gemini-specific patterns
+- Provider-specific skills (use inside the corresponding adapter, not in feature code):
+  - `claude-api` — Anthropic SDK patterns, prompt caching, thinking, batch
+  - `gemini-interactions-api` — Gemini SDK, structured output, multimodal
+  - `gemini-live-api-dev` — Gemini Live API for realtime audio/video streaming
+  - `vertex-ai-api-dev` — Gemini on Vertex AI in enterprise environments

@@ -54,7 +54,7 @@ export class RolesGuard implements CanActivate {
     ]);
     if (!required) return true;
     const user = ctx.switchToHttp().getRequest().user;
-    return user && required.some(r => user.roles.includes(r));
+    return !!user?.roles?.some((r: string) => required.includes(r));
   }
 }
 ```
@@ -73,8 +73,11 @@ providers: [{ provide: APP_GUARD, useClass: AuthGuard }]
 export const IS_PUBLIC = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC, true);
 
-// in AuthGuard canActivate:
-if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, [...])) return true;
+// in AuthGuard canActivate(ctx: ExecutionContext):
+if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, [
+  ctx.getHandler(),
+  ctx.getClass(),
+])) return true;
 ```
 
 ## Pipes
@@ -139,7 +142,10 @@ export class TimeoutInterceptor implements NestInterceptor {
       timeout(this.ms),
       catchError(err =>
         err instanceof TimeoutError
-          ? throwError(() => new RequestTimeoutException({ code: 'REQUEST.TIMEOUT' }))
+          ? throwError(() => new RequestTimeoutException({
+              code: 'REQUEST.TIMEOUT',
+              message: 'Request timed out.',
+            }))
           : throwError(() => err),
       ),
     );
@@ -152,7 +158,9 @@ export class TimeoutInterceptor implements NestInterceptor {
 ```ts
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
-  constructor(private readonly logger: PinoLogger) {}
+  constructor(
+    @InjectPinoLogger(LoggingInterceptor.name) private readonly logger: PinoLogger,
+  ) {}
   intercept(ctx: ExecutionContext, next: CallHandler) {
     const req = ctx.switchToHttp().getRequest();
     const start = Date.now();
@@ -185,7 +193,9 @@ Good for pure reads, bounded cardinality, safe staleness. Never cache auth decis
 
 - Catch thrown exceptions, shape into the standard error body.
 - `@Catch()` — catch all. `@Catch(HttpException)` — only these.
-- Register global: `app.useGlobalFilters(new AllExceptionsFilter())`.
+- Register global via `APP_FILTER` so dependencies (e.g. `PinoLogger`) inject cleanly:
+  `providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }]`.
+- **Must** branch on `host.getType()` — `@Catch()` matches every context (HTTP, WebSocket, RPC, BullMQ); re-throw outside HTTP so the right handler runs.
 - **Must** skip write when `response.headersSent` (streaming, raw Node handlers).
 
 See `10-error-handling.md`.
@@ -208,7 +218,14 @@ Prefer class form (DI) for anything that needs services.
 providers: [
   { provide: APP_GUARD, useClass: AuthGuard },
   { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
-  { provide: APP_PIPE, useClass: ValidationPipeWithCustomFactory },
+  {
+    provide: APP_PIPE,
+    useValue: new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  },
   { provide: APP_FILTER, useClass: AllExceptionsFilter },
 ],
 ```
@@ -279,13 +296,16 @@ export class OrderController {
 - Interceptors that catch exceptions (use filters).
 - Pipes with external IO (blocking the request pipeline; move to service).
 - Filters that return 200 on error.
-- Guards that read request body (body parsing happens after guards; move to interceptor or pipe).
+- Guards that validate request body shape (validation belongs in pipes/DTOs; guards should
+  authorize, not validate input). The body is parsed by middleware before guards run, so it's
+  technically reachable — but reading it there couples auth to payload shape and skips the
+  DTO whitelist.
 
 ## Code review checklist
 
 - [ ] Guards handle only auth/permission/throttle; no data mutation
 - [ ] Pipes handle only validation/transform; no DB calls
-- [ ] Interceptors are pure (logging, timing, tracing, caching); no auth decisions and no response-body shaping
+- [ ] Interceptors stay pure (logging, timing, tracing, caching); they don't decide auth and don't shape success or error response bodies
 - [ ] Filter catches all; shapes errors into `{ code, message, details?, traceId }`; skips on `headersSent`
 - [ ] Global components registered via `APP_*` tokens for DI
 - [ ] Order of multiple guards / interceptors is intentional
