@@ -1,6 +1,6 @@
 ---
 name: nestjs-dev-guidelines
-description: 'Production-grade NestJS backend standards for writing, reviewing, and evolving NestJS/Nest-style TypeScript services. Use when a repo has modules, controllers, providers/services, DTOs, guards, pipes, or Nest-oriented boundaries, or when designing NestJS APIs, modules, migrations, auth/RBAC, multi-tenant SaaS isolation, repository/query patterns, validation, pagination, caching, error handling/exception filters, BullMQ/jobs, webhooks, uploads, decorators, provider scopes, dynamic modules, circular deps, health/readiness/shutdown, observability/logging/tracing, OpenTelemetry, testing, code review, modernization/version/runtime advice, or AI backend patterns like LLM gateways, SSE streaming, usage metering, and quotas. For volatile versions, commands, model IDs, packages, Node/Nest/ORM APIs, verify official docs and repo. Do NOT trigger for plain Express/Fastify/Hono/Koa unless Nest-style boundaries already exist; use cross-cutting backend guidance only. Do NOT use for non-Node backends or pure frontend work.'
+description: 'Production-grade NestJS backend standards for writing, reviewing, and evolving NestJS/Nest-style TypeScript services. Use when a repo has modules, controllers, providers/services, DTOs, guards, pipes, or Nest-oriented boundaries, or when designing NestJS APIs, modules, migrations, auth/RBAC, multi-tenant SaaS isolation, DDD layered/hexagonal architecture, ports/adapters, use cases, repository/query patterns, validation, pagination, caching, error handling/exception filters, BullMQ/jobs, webhooks, uploads, decorators, provider scopes, dynamic modules, circular deps, health/readiness/shutdown, observability/logging/tracing, OpenTelemetry, testing, code review, modernization/version/runtime advice, or AI backend patterns like LLM gateways, SSE streaming, usage metering, and quotas. Verify volatile versions/commands/model IDs/packages/APIs against official docs and the repo. Plain Express/Fastify/Hono/Koa without Nest boundaries: cross-cutting guidance only. Not for non-Node backends or pure frontend work.'
 ---
 
 # NestJS Dev Guidelines
@@ -210,6 +210,7 @@ Read the full reference file when you need detail. The number prefix is for stab
 | 37 | `37-file-uploads.md` | Prefer presigned direct-to-bucket uploads (`PUT` for clients, `POST` policy for browsers); cap size/MIME at the boundary; sniff magic bytes; opaque tenant-prefixed storage keys; server-compute hash/size/mime; AV scan before exposure; rate-limit upload endpoints |
 | 38 | `38-decorators-scopes-dynamic-modules.md` | Param decorators only extract from request; default to singleton scope; dynamic modules for configurable infra; `forwardRef` is a smell |
 | 39 | `39-exception-filters.md` | One global filter shapes every error to `{ code, message, details?, traceId }`; throw typed `HttpException` subclasses; never leak internals |
+| 40 | `40-ddd-layered-architecture.md` | Optional DDD layering in three tiers (classic layers → layered feature modules → hexagonal ports/adapters); dependencies point inward; domain stays framework-free; default six-bucket layout still wins for CRUD |
 
 ## When to deep-read
 
@@ -217,6 +218,7 @@ Read the full reference file when you need detail. The number prefix is for stab
 |---|---|
 | Starting any implementation or bug fix | 00, 05 |
 | Starting a new feature module | 01, 03, 04 |
+| Structuring with DDD layers / hexagonal / ports-adapters | 40, 01, 03 |
 | Starting or modernizing a service | 32, 34, 20 |
 | Designing a new endpoint | 06, 07, 08, 09 |
 | Returning errors consistently | 10 |

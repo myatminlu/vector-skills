@@ -3,6 +3,8 @@
 ## TL;DR
 
 - `src/` has exactly six top-level buckets: `core/`, `common/`, `integrations/`, `modules/`, `events/`, `commands/`.
+- This is the **default** layout. If the repo uses (or the task asks for) DDD layers, hexagonal, or
+  ports/adapters, use [`40-ddd-layered-architecture.md`](./40-ddd-layered-architecture.md) instead.
 - Every file belongs in exactly one bucket. If you're unsure, you're probably creating a new module.
 - Domain folders are **singular** (`user/`, `payment/`). Shared-utility folders are **plural** (`pipes/`, `utils/`).
 - Do not put business logic in `common/`. Do not put generic utilities in `modules/`.
@@ -220,3 +222,4 @@ src/payment/                        # wrong: not under modules/
 - [`36-webhooks.md`](./36-webhooks.md) — split between `integrations/<provider>/` and `modules/<feature>/webhooks/`
 - [`37-file-uploads.md`](./37-file-uploads.md) — split between `integrations/<bucket>/` and the feature module
 - [`38-decorators-scopes-dynamic-modules.md`](./38-decorators-scopes-dynamic-modules.md) — where dynamic modules belong
+- [`40-ddd-layered-architecture.md`](./40-ddd-layered-architecture.md) — the DDD/hexagonal alternative to this layout, and when to choose it
