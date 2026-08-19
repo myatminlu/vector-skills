@@ -7,3 +7,6 @@ node_modules/
 __pycache__/
 *.pyc
 *.skill
+
+# local benchmark runs (reference private client repos)
+benchmarks/
