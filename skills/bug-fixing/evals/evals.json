@@ -1,0 +1,106 @@
+{
+  "skill_name": "bug-fixing",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Our invoice page shows a blank total for some European customers. I already found the fix — in the template, change `{{ total }}` to `{{ total || 0 }}`. Can you apply that?",
+      "expected_output": "Refuses the proposed patch as a symptom fix, traces the NaN backwards to where the value was produced (locale-ambiguous price parsing at the import/ingestion boundary), and places the fix at the boundary that owns the invariant. Notes that `|| 0` would silently corrupt every downstream number rather than surface the bad data.",
+      "files": [],
+      "must_include": [
+        "root cause",
+        "boundary",
+        "symptom",
+        "parse",
+        "silently"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "This integration test fails about one run in five. Just wrap the assertion in a retry with a 100ms sleep so CI goes green — we ship tomorrow.",
+      "expected_output": "Identifies sleep/retry as a band-aid that hides a race or missing synchronization, and quantifies the intermittency instead. Proposes awaiting the real condition or fixing the ordering assumption. If the deadline forces a mitigation, labels it temporary, keeps it reversible, and records the follow-up with the causal chain.",
+      "files": [],
+      "must_include": [
+        "race",
+        "sleep",
+        "flak",
+        "temporary",
+        "follow-up"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Users report the export job occasionally writes an empty file. I can't reproduce it locally and I don't have prod logs. Give me a fix.",
+      "expected_output": "Declines to ship a speculative fix while claiming it is verified. States plainly that the bug is not reproduced, switches to evidence-gathering (logs, traces, targeted instrumentation at boundaries), and lists what information would distinguish the candidate causes.",
+      "files": [],
+      "must_include": [
+        "reproduce",
+        "evidence",
+        "instrument",
+        "guess"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "The bug is that our `orders.status` column stores free-text strings, so a typo'd status silently drops the order from every report. Fix it.",
+      "expected_output": "Diagnoses the design-level cause (illegal state is representable) but recognizes the correct fix changes a database schema and persisted data, so it stops and asks before proceeding. Notes that already-corrupted rows need a data remediation plan, not just a code change, and offers the options with trade-offs.",
+      "files": [],
+      "must_include": [
+        "schema",
+        "migration",
+        "data",
+        "ask",
+        "existing"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Checkout is down in production right now — a null customer address throws in the payment adapter. Get it working.",
+      "expected_output": "Treats this as the legitimate mitigation case: stops the bleeding with the smallest reversible change, but explicitly labels it a temporary mitigation in both the code and the report, keeps the investigation open, and documents the causal chain plus the follow-up for the real fix at the layer that owns the invariant.",
+      "files": [],
+      "must_include": [
+        "mitigation",
+        "temporary",
+        "reversible",
+        "follow-up",
+        "root cause"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "I fixed the off-by-one in `paginateResults()` — the last page was dropping one row. Anything else I should do before I open the PR?",
+      "expected_output": "Requires a regression test that fails before and passes after, then mandates a clone hunt: the same pattern almost always exists in sibling pagination call sites. Reports every instance found whether fixed or not, and checks the blast radius of the changed behavior on existing callers and cached or stored results.",
+      "files": [],
+      "must_include": [
+        "test",
+        "clone",
+        "call site",
+        "blast radius"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Write up the fix for the session timeout bug so I can paste it into the PR.",
+      "expected_output": "Produces the structured report: symptom and how it was reproduced, the causal chain with file:line references ending at the true cause, why the obvious fix was rejected, what changed and why that layer is correct, verification showing the test that failed before and passes now, blast radius and compatibility, and related findings that were reported but not fixed.",
+      "files": [],
+      "must_include": [
+        "Symptom",
+        "Root cause",
+        "Verification",
+        "Blast radius",
+        "not fixed"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "The comment above this function says it retries three times on timeout, so the retry logic is fine — the bug must be elsewhere. Where should I look next?",
+      "expected_output": "Refuses to accept the comment as evidence and reads the executing code instead. Treats a comment that contradicts the implementation as a finding worth reporting in its own right, and re-derives the actual retry, timeout, and idempotency behavior from the code before moving on.",
+      "files": [],
+      "must_include": [
+        "comment",
+        "code",
+        "evidence",
+        "contradict"
+      ]
+    }
+  ]
+}

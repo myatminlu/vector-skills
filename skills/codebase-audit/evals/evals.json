@@ -1,0 +1,104 @@
+{
+  "skill_name": "codebase-audit",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "This codebase is a mess — two teams built overlapping features for a year. Audit it and tell me what to do.",
+      "expected_output": "Runs the phased audit, writing each phase to its own numbered file under reports/ — reconnaissance map, wiring and reachability truth, duplication clusters, band-aids, bug hunt, feature verification, tests — before producing a sequenced refactor plan. Every finding cites path:line plus the evidence, and confidence is tagged honestly.",
+      "files": [],
+      "must_include": [
+        "reports/",
+        "duplicat",
+        "wiring",
+        "refactor plan",
+        "line"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "While you're reading through, just go ahead and clean up anything obviously broken so we save a round trip.",
+      "expected_output": "Declines to change production code during the audit phases, explaining that mixing audit and refactor is how audits turn into unreviewable diffs. Records the issues as findings with locations and defers all edits to the post-approval execution phase, one reversible step per commit.",
+      "files": [],
+      "must_include": [
+        "separate",
+        "no production code",
+        "findings",
+        "approval"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I grepped for `LegacyExportHandler` and it only appears in its own file. Safe to delete?",
+      "expected_output": "Refuses to call it dead on grep evidence alone, listing the reachability paths grep misses — dynamic dispatch, DI container registration, reflection, string-registered routes, cron and queue workers, feature flags, and external callers. Tags the finding SUSPECTED rather than CONFIRMED and names the specific check that would settle it.",
+      "files": [],
+      "must_include": [
+        "grep",
+        "reflection",
+        "dependency injection",
+        "SUSPECTED",
+        "prove"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "For each thing you find, how confident should you claim to be?",
+      "expected_output": "Explains the three-level confidence tagging: CONFIRMED when traced and proven, LIKELY when there is strong static evidence plus one inference, and SUSPECTED when it still needs verification. Notes that an inflated CONFIRMED poisons every decision built on top of it, and that unverifiable items belong in open questions with the command or answer needed.",
+      "files": [],
+      "must_include": [
+        "CONFIRMED",
+        "LIKELY",
+        "SUSPECTED",
+        "open questions"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "We have three different email-sending implementations. Just pick the newest and delete the other two.",
+      "expected_output": "Chooses a canonical implementation with a stated reason, but first identifies what behavior in the losing copies must be preserved rather than assuming newest is most complete. Sequences the consolidation into small, individually reversible steps with characterization tests written and passing first, and flags any intentional behavior change for human sign-off.",
+      "files": [],
+      "must_include": [
+        "canonical",
+        "characterization test",
+        "behaviour",
+        "reversible",
+        "sign-off"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Can you review `src/services/payment.ts` for me? Just that one file.",
+      "expected_output": "Recognizes a single-file review is outside this workflow's scope and points to the code quality review workflow instead, rather than launching a whole-codebase audit for one file.",
+      "files": [],
+      "must_include": [
+        "single file",
+        "scope",
+        "quality"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "The README says the notification service is fully wired up to the order flow. So I can skip that part of the audit?",
+      "expected_output": "Refuses to accept the README as evidence, since only the executing code is the source of truth. Traces the real path from entry point through to the notification dispatch to verify the hops actually connect, and treats a documented-but-unwired feature as exactly the kind of finding the wiring phase exists to catch.",
+      "files": [],
+      "must_include": [
+        "source of truth",
+        "trace",
+        "entry point",
+        "README"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Give me the refactor plan and start executing it tonight while I'm asleep.",
+      "expected_output": "Delivers the plan — target architecture with one canonical home per concept, before and after module map, and sequenced steps each with preconditions, exact change, verification, rollback, and risk — then stops and waits for approval before editing anything. Includes the do-not-touch list and the separate list of intentional behavior changes needing sign-off.",
+      "files": [],
+      "must_include": [
+        "approval",
+        "wait",
+        "rollback",
+        "do-not-touch",
+        "sign-off"
+      ]
+    }
+  ]
+}

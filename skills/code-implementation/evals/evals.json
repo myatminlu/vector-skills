@@ -1,0 +1,104 @@
+{
+  "skill_name": "code-implementation",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add a `formatCurrency(amount, currency)` helper to `src/utils/money.ts` and use it in the new invoice screen.",
+      "expected_output": "Searches the codebase for existing implementations before writing anything — by name, keyword, and string literal — because a currency formatter is the kind of thing that already exists once or twice. Reuses or extends the existing one rather than adding a near-duplicate, and reports any duplicates found as a finding.",
+      "files": [],
+      "must_include": [
+        "search",
+        "existing",
+        "duplicat",
+        "reuse"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Add a webhook endpoint that marks a subscription as cancelled when the billing provider calls us.",
+      "expected_output": "Locates the real code path from the true entry point and records the call chain as file:line hops, reads every file it intends to change completely, finds all callers of anything it modifies, and identifies the contracts it must not break — route surface, persisted schema, and event shape. Plans before coding and covers failure paths (retries, duplicate delivery, out-of-order events).",
+      "files": [],
+      "must_include": [
+        "entry point",
+        "caller",
+        "contract",
+        "idempot",
+        "plan"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "We're migrating from the old `UserRepo` to the new `UserRepository`. I've moved the three call sites in the auth module. Good to merge?",
+      "expected_output": "Flags the risk specific to refactors: a half-migrated state that leaves two ways to do one thing permanently. Requires a full sweep for remaining references — including dynamic ones — and either completing the migration or deleting the old implementation, rather than leaving both alive.",
+      "files": [],
+      "must_include": [
+        "sweep",
+        "remaining",
+        "two ways",
+        "delete"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "I added the `NotificationService` class and its tests pass. Feature done?",
+      "expected_output": "Rejects passing unit tests as proof the feature works, and requires tracing the end-to-end path in the modified code to confirm the wiring is real — imports resolved, provider registered, dependency injected, route or subscriber actually reachable from the entry point. Names code-that-exists-but-is-not-wired-in as a common silent failure in agent-written changes.",
+      "files": [],
+      "must_include": [
+        "wired",
+        "end-to-end",
+        "register",
+        "reachable",
+        "entry point"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Make the dashboard load faster — it's sluggish with a lot of records.",
+      "expected_output": "Refuses to optimize without measurement first, identifying the actual hot path rather than guessing. Looks for algorithmic traps and N+1 query patterns, establishes a baseline, and verifies the improvement by measurement rather than by inspection.",
+      "files": [],
+      "must_include": [
+        "measure",
+        "baseline",
+        "N+1",
+        "profil"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Rename `getUser` to `fetchUser` across the repo and also switch it to return null instead of throwing when the user is missing.",
+      "expected_output": "Separates the mechanical rename from the behavior change rather than shipping them together, because a rename mixed with a contract change is unreviewable. Enumerates every caller and checks which ones relied on the throw, and treats the null-vs-throw switch as a contract change with its own blast radius and tests.",
+      "files": [],
+      "must_include": [
+        "separate",
+        "behavior",
+        "caller",
+        "contract"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Here's my plan: I'll add a `retryWithBackoff` wrapper in the orders service. Start coding.",
+      "expected_output": "Produces the written plan first — understanding, root cause or gap, approach, changes, reuse, risk and blast radius, verification, and out-of-scope findings — rather than coding straight from the user's proposal. Checks whether a retry helper already exists and whether the orders service is the right layer to own retry semantics, or whether that belongs in the adapter for the external system.",
+      "files": [],
+      "must_include": [
+        "plan",
+        "reuse",
+        "layer",
+        "adapter",
+        "verification"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Small change: the CSV export is missing the header row. Just add it.",
+      "expected_output": "Treats the small change with the same discipline — reads the real code path, and performs the mandatory pattern sweep across the codebase rather than assuming a one-line edit is contained. Checks whether other export paths share the defect and whether any consumer parses the file positionally and would break when a header appears.",
+      "files": [],
+      "must_include": [
+        "sweep",
+        "other",
+        "consumer",
+        "break"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "skill_name": "code-quality-check",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "```js\nfunction applyDiscount(order, code) {\n  const pct = DISCOUNTS[code];\n  return order.total - (order.total * pct);\n}\n```\nWhat's wrong with this?",
+      "expected_output": "Selects Snippet mode because there is no repo access, reviews what is given (unknown code yields NaN, no validation of the discount code, floating-point money arithmetic, no clamping so a bad percentage can produce a negative total), and states explicitly which conclusions would need repo context it does not have — who calls this, whether the code is validated upstream, and how money is represented elsewhere.",
+      "files": [],
+      "must_include": [
+        "Snippet",
+        "NaN",
+        "validat",
+        "repo context"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Review this PR before I merge it. It adds a password reset endpoint.",
+      "expected_output": "Reviews the change and its blast radius — every caller and every consumer of changed contracts. Assigns each finding a severity of Blocker, Major, Minor, or Nit adjusted for the stakes, gives a verdict of Ship, Ship with follow-ups, Changes required, or Do not merge, and states in one sentence exactly what would change the verdict.",
+      "files": [],
+      "must_include": [
+        "Blocker",
+        "Major",
+        "verdict",
+        "blast radius",
+        "merge"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "This service has the same unchecked `JSON.parse` in about twenty request handlers. How should that show up in your report?",
+      "expected_output": "Rolls the repeated instances into a single systemic finding with a representative list of locations rather than twenty separate findings, explaining that presenting it as twenty buries the other issues. Recommends a fix that eliminates the whole defect class — a shared parsing boundary or a lint rule — over patching each instance.",
+      "files": [],
+      "must_include": [
+        "systemic",
+        "one finding",
+        "locations",
+        "class"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Good review. Now go ahead and fix all the Blockers you found.",
+      "expected_output": "Does not drift into fixing. States that the review ends with findings rather than commits, and hands off to the implementation or bug-fixing workflow for the actual changes, carrying the findings and their cited evidence across.",
+      "files": [],
+      "must_include": [
+        "hand off",
+        "findings",
+        "implement"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Give me a full quality review of this repo. I'm short on time, so keep it quick and just tell me it's fine if nothing jumps out.",
+      "expected_output": "Refuses the rubber stamp. Runs the mechanical checks and the bundled signal collector to establish ground truth before judging, samples then deepens for a repo sweep, and re-opens the cited lines for every Blocker and Major to confirm the excerpt says what the finding claims. Records what it could not verify or run in a Limitations section instead of implying full coverage.",
+      "files": [],
+      "must_include": [
+        "ground truth",
+        "Limitations",
+        "verify",
+        "sweep"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "What does your finished report actually contain? I want to know before you start.",
+      "expected_output": "Lists the deliverables in decision-first order: verdict plus one-paragraph summary, scorecard with per-dimension justifications, findings sorted by severity in the standard block (ID, severity, confidence, location, evidence excerpt, why it matters, suggested fix, effort), systemic patterns, what is good with citations, a prioritized remediation plan, and limitations.",
+      "files": [],
+      "must_include": [
+        "verdict",
+        "Scorecard",
+        "severity",
+        "evidence",
+        "remediation",
+        "Limitations"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "An AI agent wrote this whole module last night. Check it over.",
+      "expected_output": "Treats agent-written code as a normal review target with the usual dimensions, and pays particular attention to the failure modes typical of generated code: plausible-looking code that is never wired in, near-duplicate helpers alongside existing ones, tests that assert the code runs rather than that it behaves, and swallowed errors. Cites evidence for each finding rather than asserting a shape.",
+      "files": [],
+      "must_include": [
+        "wired",
+        "duplicat",
+        "tests",
+        "evidence"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "It's an internal admin script that only two of us run by hand. Same review bar as our payments service?",
+      "expected_output": "Adjusts severity to the stakes established in Phase 0 rather than applying one fixed bar, explaining that consequence and likelihood shift when the code is an internal tool versus a production system handling money or personal data. Keeps genuine correctness and data-loss issues in scope while downgrading ceremony that does not pay for itself here.",
+      "files": [],
+      "must_include": [
+        "stakes",
+        "severity",
+        "internal",
+        "production"
+      ]
+    }
+  ]
+}
