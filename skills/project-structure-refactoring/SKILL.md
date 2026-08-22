@@ -1,9 +1,9 @@
 ---
-name: project-structure
+name: project-structure-refactoring
 description: 'Cross-language project structure and structural refactoring standards: design clean folder/module layouts and safely restructure existing codebases. Use when choosing or fixing a repo''s folder structure, deciding where a file or module belongs, package-by-feature vs by-layer, reorganizing/moving files or directories, planning a migration to a new layout, fixing messy/flat/deep folder trees, splitting or adopting a monorepo (apps/packages, workspaces, Turborepo/Nx), Python src layout, Go cmd/internal layout, React/Next.js/Expo feature folders, barrel files, import path aliases, or updating Dockerfiles/CI/configs after file moves. Covers plan-approve-execute staged migrations with green builds, git mv history preservation, and boundary enforcement. Structural only: hand code-level refactoring (extract/rename/dedupe) to code-implementation or codebase-audit, NestJS layout specifics to nestjs-dev-guidelines. Principles apply to any language beyond the stacks documented.'
 ---
 
-# Project Structure
+# Project Structure Refactoring
 
 Standards for two jobs: **designing** a clean folder/module layout for a project (new or
 existing, in any language), and **restructuring** an existing codebase to reach that layout

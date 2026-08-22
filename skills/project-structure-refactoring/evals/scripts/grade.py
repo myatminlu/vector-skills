@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Coarse grader for project-structure evals.
+"""Coarse grader for project-structure-refactoring evals.
 
 Checks that an agent's response to each eval prompt contains the
 must_include keyphrases declared in evals.json. This is a substring
