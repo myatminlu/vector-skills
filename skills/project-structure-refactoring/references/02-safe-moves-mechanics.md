@@ -93,6 +93,11 @@ after **every** stage. Ordered roughly by how quietly each one fails:
   entry-point tables in `pyproject.toml`.
 - **Migration/seed tooling** that discovers files by directory.
 
+**Loud but numerous (cheap individually, expensive one-at-a-time):**
+- Test-double path strings — `jest.mock('../utils/dates')`, `mock.patch("app.utils.now")`,
+  spy/stub registrations by module path. They fail at test time, so nothing ships — but a
+  big move breaks dozens at once. Include them in the same codemod as the imports.
+
 **Fails socially (nobody's build, everyone's trust):**
 - README/docs code links, architecture docs, onboarding guides, editor run configs, deep
   links in issues/wikis you control.
@@ -126,6 +131,22 @@ turn that absence into a red diff:
   list inside the built artifact (`docker export ... | tar t`, `npm pack --dry-run`,
   `tar tzf dist/*`) before vs after: a pure move shows renames only; a *disappearance* is
   next month's prod incident caught in the PR.
+
+Two guards worth making permanent alongside the counts:
+
+- **Trigger-glob reachability.** Assert in CI that every `paths:`/`paths-ignore:` glob in
+  every workflow matches at least one tracked file (`git ls-files | grep -E <pattern>`) —
+  a filter orphaned by a move then fails the build instead of silently disarming it. The
+  same one-liner validates CODEOWNERS patterns.
+- **Required-check audit after workflow or job renames.** A branch-protection required
+  check whose job no longer exists either blocks every merge as "Expected" forever or —
+  worse — gets deleted by an admin under deadline pressure, leaving nothing required.
+  Confirm on the stage PR that every required check actually *reported*.
+
+And one trap in the move itself: moving code **into** a directory named like build output
+(`build/`, `dist/`, `out/`, `tmp/`, `vendor/`) can make `.gitignore`/`.dockerignore`
+swallow real source. After such a move, `git check-ignore -v <newpath>` and
+`git status --ignored` are the ten-second proof it didn't.
 
 These are one-line scripts, and they outlive the migration: keep the test-count and
 check-set assertions in CI permanently and they also catch the slow version of this

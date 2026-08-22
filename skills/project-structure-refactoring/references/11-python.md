@@ -87,6 +87,10 @@ app). Don't fight it and don't double-wrap it:
   empty. Logic in `__init__.py` runs on import — it turns "importing the package" into a
   side effect and makes moves order-sensitive.
 - `import *` only in shim modules ([`02`](./02-safe-moves-mechanics.md)).
+- Avoid stdlib-colliding module names (`email.py`, `logging.py`, `types.py`, `json.py`).
+  At the repo root they *shadow* the stdlib — bizarre import-time failures, one of the
+  quiet bug classes that moving into a named package kills — and even inside a package
+  they're legal but a permanent source of human confusion.
 
 ## The dotted-path string census
 
@@ -104,6 +108,19 @@ anything, grep for the old dotted path in:
   `INSTALLED_APPS`/`DJANGO_SETTINGS_MODULE`/app labels.
 - Anything doing `importlib.import_module(...)` or settings-driven class paths
   (`"app.auth.backends.JwtBackend"`).
+- Test doubles: `mock.patch("app.services.email.send")` targets are dotted-path strings.
+  They fail loudly at test time, but there will be *many* — include them in the codemod
+  pass, don't fix them one red test at a time.
+- Logging and observability: `dictConfig` logger keys are module paths (a stale key
+  silently stops applying levels/handlers), and `__name__`-based logger names all change —
+  so Sentry issue fingerprints, APM transaction names, and alerts keyed on logger/module
+  names regroup or go quiet. Warn whoever is on call and re-point those alerts; "old
+  issues reopening as new" after the deploy is this, not a regression.
+- Pickled module paths: your own classes pickled into Redis caches or the Celery result
+  backend embed their module path — after the move, unpickling raises
+  `ModuleNotFoundError`, and **rollback breaks in the other direction** (new pickles
+  unreadable by old code). Confirm Celery serializers are JSON (`task_serializer`,
+  `accept_content`); if real pickles exist, version the cache keys at cutover.
 
 Each hit is a mapping-table note in the plan ([`01`](./01-restructure-workflow.md)); the
 post-stage sweep re-greps them. Unit tests catch none of these — the **runtime smoke**

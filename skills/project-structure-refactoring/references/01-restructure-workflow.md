@@ -67,6 +67,11 @@ duplicates, dead code, and wiring problems the mapping must decide about.
   purpose needs a paragraph, the folder is wrong.
 - Design for the code that exists, plus the direction the team confirmed — not for a
   hypothetical future ("we might go microservices") that earns folders no one fills.
+- **Unbundle the ask.** A restructure request usually bundles several fixes with different
+  value and risk — a packaging fix, a layout change, a junk-drawer dissolution, a rename
+  wave. Decompose them in the plan and price each separately, so approval can be partial:
+  "do the src move and the utils split now, defer the feature packages" is a legitimate —
+  often the right — outcome, and the stages make each piece independently shippable anyway.
 - Framework-owned directories (Next.js `app/`, Django apps, Go `internal/`) are fixed
   points; verify their conventions against the docs for the version in the repo, then design
   around them.
