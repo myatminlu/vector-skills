@@ -176,5 +176,6 @@ riskier. It has to pay rent. Leave the structure alone when:
 ## See also
 
 - [`01-restructure-workflow.md`](./01-restructure-workflow.md) — getting an existing repo to this shape safely
+- [`03-splitting-large-files.md`](./03-splitting-large-files.md) — when the junk drawer is one giant file: seams, facades, extraction order
 - [`02-safe-moves-mechanics.md`](./02-safe-moves-mechanics.md) — the mechanics of the moves
 - [`10-javascript-typescript.md`](./10-javascript-typescript.md), [`11-python.md`](./11-python.md), [`12-go.md`](./12-go.md), [`13-monorepo.md`](./13-monorepo.md) — these principles instantiated per stack

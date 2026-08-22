@@ -97,7 +97,10 @@ Rules that make the table trustworthy:
   `codebase-audit` / ask the user), a missing concept in the target, or a file doing two
   jobs. Resolve it in the plan, not during execution. Deleting is never a restructure
   side-effect; it's its own decision with its own approval.
-- **Moves only.** A row that implies rewriting content is out of scope by definition
+- **Moves and verbatim extractions only.** Splitting a file into parts *is* in scope when
+  the parts move verbatim — that's a structural change with its own mechanics
+  ([`03-splitting-large-files.md`](./03-splitting-large-files.md), including symbol-level
+  mapping rows). A row that implies *rewriting* content is out of scope by definition
   (Non-Negotiable 4); note it as follow-up work for `code-implementation`.
 - **Notes carry the traps** — which config needs editing, which move needs a shim, which
   folder is hot in open PRs.
@@ -200,4 +203,5 @@ The migration isn't done when the files stop moving:
 
 - [`00-structure-principles.md`](./00-structure-principles.md) — what the target should look like and when to leave things alone
 - [`02-safe-moves-mechanics.md`](./02-safe-moves-mechanics.md) — git mv, import fixing, shims, silent breakers
+- [`03-splitting-large-files.md`](./03-splitting-large-files.md) — when a mapping row is one giant file that must become many
 - [`10`](./10-javascript-typescript.md)–[`13`](./13-monorepo.md) — reference targets per stack

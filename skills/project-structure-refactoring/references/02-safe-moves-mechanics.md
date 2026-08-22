@@ -31,6 +31,9 @@ Docker image built fine and was missing a directory". This file is the census of
   otherwise some checkouts see no change and others see a conflict.
 - Some hosts' blame/history UIs are weaker than `git log --follow` — one more reason move
   commits stay pure and reviewable.
+- One-file-to-many splits are a different history problem — `git mv` can't express them;
+  see [`03-splitting-large-files.md`](./03-splitting-large-files.md) for verbatim
+  extraction commits and reading history back with `git blame -C -C -C`.
 
 ## Fix imports with tooling, not fingers
 
@@ -222,6 +225,7 @@ the stage and amend the plan (per `01`).
 ## See also
 
 - [`01-restructure-workflow.md`](./01-restructure-workflow.md) — where these mechanics slot into the migration
+- [`03-splitting-large-files.md`](./03-splitting-large-files.md) — splitting one file into many: facades, extraction commits, registration snapshots
 - [`10-javascript-typescript.md`](./10-javascript-typescript.md) — tsconfig paths, barrels, alias configs
 - [`11-python.md`](./11-python.md) — dotted-path string census, absolute imports, packaging paths
 - [`12-go.md`](./12-go.md) — import paths as API, internal/ enforcement

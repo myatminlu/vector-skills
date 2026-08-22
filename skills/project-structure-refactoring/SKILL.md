@@ -1,6 +1,6 @@
 ---
 name: project-structure-refactoring
-description: 'Cross-language project structure and structural refactoring standards: design clean folder/module layouts and safely restructure existing codebases. Use when restructuring or reorganizing a codebase, choosing or fixing a repo''s folder structure, deciding where a file or module belongs, package-by-feature vs by-layer, reorganizing/moving files or directories, planning a migration to a new layout, fixing messy/flat/deep folder trees, splitting or adopting a monorepo (apps/packages, workspaces, Turborepo/Nx), Python src layout, Go cmd/internal layout, React/Next.js/Expo feature folders, barrel files, import path aliases, or updating Dockerfiles/CI/configs after file moves. Covers plan-approve-execute staged migrations with green builds, git mv history preservation, and boundary enforcement. Structural only: hand code-level refactoring (extract/rename/dedupe) to code-implementation or codebase-audit, NestJS layout specifics to nestjs-dev-guidelines. Principles apply to any language beyond the stacks documented.'
+description: 'Cross-language project structure and structural refactoring standards: design clean folder/module layouts and safely restructure existing codebases. Use when restructuring or reorganizing a codebase, choosing or fixing a repo''s folder structure, deciding where a file belongs, package-by-feature vs by-layer, reorganizing/moving files, planning a migration to a new layout, fixing messy/flat/deep folder trees, splitting a giant or god file into modules, monorepos (apps/packages, workspaces, Turborepo/Nx), Python src layout, Go cmd/internal layout, React/Next.js/Expo feature folders, barrel files, import path aliases, or updating Dockerfiles/CI/configs after file moves. Covers plan-approve-execute staged migrations with green builds, git mv history preservation, and boundary enforcement. Structural only: hand code-level refactoring (extract/rename/dedupe) to code-implementation or codebase-audit, NestJS layout specifics to nestjs-dev-guidelines. Principles apply to any language beyond the stacks documented.'
 ---
 
 # Project Structure Refactoring
@@ -117,6 +117,8 @@ Each rule has a **Why** so you can reason about edge cases instead of applying i
 - Generic and pure (dates, retry, ids) → `lib/` (or the stack's equivalent), named by content.
 - App wiring (entrypoint, DI, router, providers) → `app/` / `cmd/` / the framework's designated spot.
 - Doesn't fit anywhere → that's a design smell to raise, not a reason to create `misc/`.
+- The "file" is thousands of lines mixing several domains → it isn't one file, it's an
+  unsplit module tree — decompose it into the layout above, see `03`.
 
 **Monorepo?**
 - Multiple deployables share code that must change atomically (or drift is already hurting via copy-paste)? → Yes: `apps/` + `packages/`, see `13`.
@@ -129,6 +131,7 @@ Each rule has a **Why** so you can reason about edge cases instead of applying i
 | 00 | `00-structure-principles.md` | Language-agnostic principles: screaming architecture, feature-first, colocation, dependency direction, junk-drawer ban, when NOT to restructure |
 | 01 | `01-restructure-workflow.md` | The migration workflow: preconditions → inventory → target → mapping table → approval gate → staged green execution → boundary guards |
 | 02 | `02-safe-moves-mechanics.md` | Mechanics: git mv and history, per-ecosystem import fixing, shims, and the silent-breaker census (Docker, CI path filters, CODEOWNERS, dotted-path strings) |
+| 03 | `03-splitting-large-files.md` | Split a giant file into the standard layout, never into fragments: symbol-level mapping, shared-base-first extraction, shrinking facade, verbatim extraction commits, registration snapshots |
 | 10 | `10-javascript-typescript.md` | Node services, React/Next.js/Expo feature folders, router-owned dirs, barrels only at module boundaries, path aliases |
 | 11 | `11-python.md` | src layout, packaging, FastAPI feature packages, Django app conventions, dotted-path string census, absolute imports |
 | 12 | `12-go.md` | cmd/ + internal/ layout, package-by-feature, package names as API, pkg/ skepticism, flat-until-it-hurts |
@@ -142,6 +145,7 @@ Each rule has a **Why** so you can reason about edge cases instead of applying i
 | Laying out a brand-new project | 00, + stack file |
 | Answering "where does this file/module go?" | 00, + stack file |
 | Executing approved moves / fixing imports | 02, 01 |
+| Splitting a giant single file (god file/module) | 03, 00, 01, + stack file |
 | Node/React/Next/Expo layout | 10, 00 |
 | Python layout or src-layout migration | 11, 02 |
 | Go service or library layout | 12, 00 |

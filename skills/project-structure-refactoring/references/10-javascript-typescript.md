@@ -155,5 +155,6 @@ A barrel is a module's public API — that is the only place it belongs:
 
 - [`00-structure-principles.md`](./00-structure-principles.md) — the principles these layouts instantiate
 - [`01-restructure-workflow.md`](./01-restructure-workflow.md) / [`02-safe-moves-mechanics.md`](./02-safe-moves-mechanics.md) — getting there
+- [`03-splitting-large-files.md`](./03-splitting-large-files.md) — breaking up a giant `api.ts`/`index.ts`: facade re-exports, extraction order
 - [`13-monorepo.md`](./13-monorepo.md) — when features grow into packages
 - `nestjs-dev-guidelines` `01-folder-structure`, `03-module-design` — NestJS targets

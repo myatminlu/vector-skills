@@ -144,7 +144,10 @@ post-stage sweep re-greps them. Unit tests catch none of these — the **runtime
 
 - Loose scripts sharing code via `sys.path` — pre-structural; fix packaging first.
 - Global `routers/`/`schemas/`/`services/` layer bins for app code.
-- `utils.py` / `helpers.py` graveyards — split into content-named `lib/` modules.
+- `utils.py` / `helpers.py` graveyards — split into content-named `lib/` modules; when the
+  graveyard is a giant single module, use the full split playbook
+  ([`03-splitting-large-files.md`](./03-splitting-large-files.md): facade, extraction order,
+  registration snapshots).
 - Relative imports across features; any `sys.path` mutation.
 - Logic in `__init__.py`; circular imports "fixed" by mid-function imports (that's a
   boundary problem — restructure the dependency, don't hide it).
@@ -167,4 +170,5 @@ post-stage sweep re-greps them. Unit tests catch none of these — the **runtime
 - [`00-structure-principles.md`](./00-structure-principles.md) — feature-first, junk drawers, boundaries
 - [`01-restructure-workflow.md`](./01-restructure-workflow.md) — the staged migration these notes plug into
 - [`02-safe-moves-mechanics.md`](./02-safe-moves-mechanics.md) — the general census; shim module pattern
+- [`03-splitting-large-files.md`](./03-splitting-large-files.md) — splitting a god module: seams, shrinking facade, cycles, TYPE_CHECKING
 - [`13-monorepo.md`](./13-monorepo.md) — multi-package Python repos

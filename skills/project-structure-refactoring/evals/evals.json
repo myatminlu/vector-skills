@@ -91,6 +91,32 @@
         "approval",
         "verify"
       ]
+    },
+    {
+      "id": 8,
+      "prompt": "We have a single main.py with about 30,000 lines \u2014 FastAPI routes, celery tasks, SQLAlchemy models, business logic, and helpers all in one file. Split it into a proper structure without breaking production.",
+      "expected_output": "Treats it as a full staged migration, not one big edit: green verify baseline first, then seam discovery inside the file \u2014 a symbol-level dependency graph classifying leaves/hubs, a module-level state audit (engine/client singletons, decorator side effects), and external importer counts per symbol. Produces a symbol-level mapping table (clusters extracted together) routed into the standard layout \u2014 feature packages and content-named lib modules, never main2.py fragments \u2014 and stops for approval. Executes shared-base-first then leaves then hubs, keeping main.py as a shrinking facade that re-exports every extracted symbol (lint-frozen so it only shrinks), so hundreds of importers and mock.patch targets keep working per stage. Extraction commits are verbatim (history read back with git blame -C -C -C). Warns about import cycles materializing on split (TYPE_CHECKING for type-only refs, no grab-bag common module), celery task-name pinning, and per-stage runtime smoke plus a registration snapshot diff so decorator-registered routes/tasks cannot silently vanish.",
+      "files": [],
+      "must_include": [
+        "facade",
+        "verbatim",
+        "symbol",
+        "registration",
+        "TYPE_CHECKING"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "Our Express app has one 8,000-line src/api.ts \u2014 every route handler, middleware, and helper lives in it, and tests everywhere do jest.mock('../api'). Break it up safely.",
+      "expected_output": "Applies the split playbook cross-language: seam discovery (symbol graph, module-level singletons, importer counts), a symbol-level mapping into feature folders and content-named lib modules, approval before extraction, then staged verbatim extraction with src/api.ts kept as a shrinking facade of export ... from statements so the many jest.mock('../api') targets and importers keep resolving throughout; the facade is lint-frozen (no-restricted-imports) and deleted in an endgame stage after importers and mocks are codemodded to the new paths. Warns that mutual references become import cycles where one side is undefined at runtime in JS, so shared base extracts first and type-only references use import type. Each stage ends green (tsc, tests, census grep) with a runtime smoke, and route-registration count is snapshotted per stage so a handler dropped from the import graph fails loudly.",
+      "files": [],
+      "must_include": [
+        "facade",
+        "jest.mock",
+        "import type",
+        "cycle",
+        "stage"
+      ]
     }
   ]
 }
