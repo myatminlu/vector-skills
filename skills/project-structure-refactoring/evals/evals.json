@@ -1,0 +1,122 @@
+{
+  "skill_name": "project-structure-refactoring",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "My React app has src/components/ with 180 files, src/hooks/ with 60, and src/utils/ with 40 — all flat. Every PR review argues about where new files go. Restructure it.",
+      "expected_output": "Refuses to move anything immediately. First verifies a green build/test baseline, inventories the tree (hot files, external consumers, path-bearing configs), then proposes a feature-first target (src/features/<name>/ with colocated components/hooks/tests, src/components/ reserved for domain-free design-system UI, utils dissolved into content-named lib/ modules). Produces an old-to-new mapping table sliced into stages, and stops at an approval gate before executing. Each stage ends green and committed; move commits contain no behavior changes.",
+      "files": [],
+      "must_include": [
+        "feature",
+        "mapping",
+        "stage",
+        "approval",
+        "green"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I'm starting a new Go service (HTTP API + a queue worker, one team, maybe 10k lines eventually). How should I lay out the folders? Should I follow golang-standards/project-layout?",
+      "expected_output": "Recommends starting small and structuring at pain: cmd/server and cmd/worker with thin main.go files since there are two binaries, everything else private-by-default under internal/ as feature-named packages (payments.Process style, no util/common/models packages — the package name is the API prefix). Notes pkg/ has no compiler semantics and is usually unnecessary, and that golang-standards/project-layout is a community template, not official Go guidance — the official go.dev module-organization docs are the reference to verify against. Flags that import cycles are compiler-enforced so dependency direction must be designed up front.",
+      "files": [],
+      "must_include": [
+        "cmd",
+        "internal",
+        "official",
+        "util",
+        "cycle"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Our Python FastAPI service is a flat package at the repo root with routers/, schemas/, services/ folders and a giant utils.py. We also run celery. Should we move to src layout, and how do we do it without breaking prod?",
+      "expected_output": "Yes: src layout so tests exercise the installed package instead of the checkout, with pyproject.toml as the single packaging source and tests/ outside the package. Restructures the layer bins (routers/schemas/services) into feature-first packages and dissolves utils.py into content-named lib modules. Requires absolute imports throughout. Critically, censuses dotted-path strings before moving: the uvicorn/gunicorn app target, celery include lists and task names (moving a module renames its tasks — pin explicit names or drain queues first), entry points in pyproject, settings modules. Migration is staged with a green verify loop per stage including a runtime smoke (boot the app, start a worker), since unit tests do not catch broken dotted paths.",
+      "files": [],
+      "must_include": [
+        "src layout",
+        "pyproject",
+        "absolute",
+        "dotted",
+        "tests"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "We have three Node repos (web, api, worker) that copy-paste the same domain types and API client between them, and they keep drifting. Consolidate them into a monorepo?",
+      "expected_output": "Confirms the drift is exactly the monorepo signal, then plans two strictly ordered migrations: first import each repo with full git history preserved into apps/<name> as-is and verify each still builds (Dockerfile/CI paths changed — census sweep); only then restructure stage by stage, extracting the duplicated types and client into packages/ (workspace-declared dependencies, no ../../ cross-package imports, no dependency cycle, apps never imported). Warns that the drifted copies differ, so diffing them comes first and genuinely divergent logic is behavior work for code-implementation, not silent unification. CI consolidation with paths filters is its own stage.",
+      "files": [],
+      "must_include": [
+        "history",
+        "apps",
+        "packages",
+        "cycle",
+        "workspace"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Last month someone reorganized our repo's folders. Tests were green, PR looked fine, but two weeks later we found CI had stopped running half the test suite and a deploy broke. We're about to do another reorg — how do we make sure file moves don't silently break things this time?",
+      "expected_output": "Explains the silent-breaker problem: typecheckers catch broken imports but nothing catches broken strings. Prescribes a path-bearing census built before the plan and grepped after every stage: CI workflow paths: filters (a moved folder silently stops triggering workflows — the exact failure described), CODEOWNERS patterns, Dockerfile COPY paths, coverage/lint globs, dotted-path strings, docs. Each stage uses git mv with moves-plus-mechanical-fixes-only commits (history/rename detection preserved), tool-driven import fixes verified by the typechecker, a grep sweep for old paths, and a runtime smoke when entry points moved. Never batch stages; each stage green and committed as a rollback point.",
+      "files": [],
+      "must_include": [
+        "Dockerfile",
+        "CODEOWNERS",
+        "grep",
+        "git mv",
+        "census"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "While you're moving our files into the new folder structure, can you also rename the badly named functions and clean up that gross date-parsing logic in the files you touch? Saves us a second pass.",
+      "expected_output": "Declines to mix the two, explaining why rather than just citing a rule: git detects renames by content similarity, so a commit that moves and rewrites a file destroys git log --follow history and blame, and behavior changes hide unreviewably inside a 300-file move diff. Move commits stay moves plus mechanical path fixes only. Offers the correct sequencing instead: finish the restructure stages green, then do symbol renames and the date-parsing cleanup as separate follow-up commits/PRs through the code-implementation workflow, listing the requested cleanups as follow-up work in the plan so they are not lost.",
+      "files": [],
+      "must_include": [
+        "behavior",
+        "separate",
+        "code-implementation",
+        "move",
+        "blame"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Our NestJS backend grew organically — controllers and services are scattered everywhere, some in src/api/, some in src/logic/. What target structure should we migrate to and how?",
+      "expected_output": "Hands the target layout to nestjs-dev-guidelines (01-folder-structure, 03-module-design: src/{core,common,integrations,modules,events,commands} with one module per bounded context) rather than inventing a competing NestJS layout, then supplies the migration machinery from this skill: green verify baseline, inventory, old-to-new mapping table covering every file, staged execution with approval before the first move, per-stage green commits, and the path-bearing census (CI filters, Dockerfile, configs).",
+      "files": [],
+      "must_include": [
+        "nestjs-dev-guidelines",
+        "mapping",
+        "stage",
+        "approval",
+        "verify"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "We have a single main.py with about 30,000 lines \u2014 FastAPI routes, celery tasks, SQLAlchemy models, business logic, and helpers all in one file. Split it into a proper structure without breaking production.",
+      "expected_output": "Treats it as a full staged migration, not one big edit: green verify baseline first, then seam discovery inside the file \u2014 a symbol-level dependency graph classifying leaves/hubs, a module-level state audit (engine/client singletons, decorator side effects), and external importer counts per symbol. Produces a symbol-level mapping table (clusters extracted together) routed into the standard layout \u2014 feature packages and content-named lib modules, never main2.py fragments \u2014 and stops for approval. Executes shared-base-first then leaves then hubs, keeping main.py as a shrinking facade that re-exports every extracted symbol (lint-frozen so it only shrinks), so hundreds of importers and mock.patch targets keep working per stage. Extraction commits are verbatim (history read back with git blame -C -C -C). Warns about import cycles materializing on split (TYPE_CHECKING for type-only refs, no grab-bag common module), celery task-name pinning, and per-stage runtime smoke plus a registration snapshot diff so decorator-registered routes/tasks cannot silently vanish.",
+      "files": [],
+      "must_include": [
+        "facade",
+        "verbatim",
+        "symbol",
+        "registration",
+        "TYPE_CHECKING"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "Our Express app has one 8,000-line src/api.ts \u2014 every route handler, middleware, and helper lives in it, and tests everywhere do jest.mock('../api'). Break it up safely.",
+      "expected_output": "Applies the split playbook cross-language: seam discovery (symbol graph, module-level singletons, importer counts), a symbol-level mapping into feature folders and content-named lib modules, approval before extraction, then staged verbatim extraction with src/api.ts kept as a shrinking facade of export ... from statements so the many jest.mock('../api') targets and importers keep resolving throughout; the facade is lint-frozen (no-restricted-imports) and deleted in an endgame stage after importers and mocks are codemodded to the new paths. Warns that mutual references become import cycles where one side is undefined at runtime in JS, so shared base extracts first and type-only references use import type. Each stage ends green (tsc, tests, census grep) with a runtime smoke, and route-registration count is snapshotted per stage so a handler dropped from the import graph fails loudly.",
+      "files": [],
+      "must_include": [
+        "facade",
+        "jest.mock",
+        "import type",
+        "cycle",
+        "stage"
+      ]
+    }
+  ]
+}
