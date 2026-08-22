@@ -365,5 +365,6 @@ without tenant context throws or returns nothing. See [`23-testing.md`](./23-tes
 - [`19-background-jobs.md`](./19-background-jobs.md) — carrying tenant context through queues.
 - [`23-testing.md`](./23-testing.md) — two-tenant integration test patterns.
 - [`24a-caching-patterns.md`](./24a-caching-patterns.md) — tenant-scoped cache key shapes.
+- [`41-n-plus-one-elimination.md`](./41-n-plus-one-elimination.md) — a DataLoader that outlives a request leaks rows across tenants; batch functions filter by tenant.
 - [`36-webhooks.md`](./36-webhooks.md) — per-tenant webhook scoping and secrets.
 - [`37-file-uploads.md`](./37-file-uploads.md) — tenant-scoped storage paths.

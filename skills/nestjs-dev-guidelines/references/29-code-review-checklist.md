@@ -20,7 +20,7 @@ reviews from opinion battles into pattern matching — fast, consistent, and kin
 4. **Consistency.** Does it follow the conventions in this skill + existing patterns in the repo?
 5. **Observability.** Can we debug this in production?
 6. **Tests.** Are they meaningful? Do they cover branches + edge cases?
-7. **Performance.** Any N+1, unbounded list, missing index?
+7. **Performance.** Any N+1, unbounded list, missing index? (N+1 detection and fix selection: `41`)
 8. **Readability.** Will the next engineer understand this in 6 months?
 
 ## Blocker vs suggestion
@@ -199,7 +199,10 @@ and formatters for those.
 
 ### Performance
 
-- [ ] No N+1 (relations batch-loaded or joined) (`24`, `14`)
+- [ ] No N+1 (relations batch-loaded or joined); query count measured, not assumed (`41`, `24`, `14`)
+- [ ] Paginated one-to-many uses entity-aware paging or a two-query batch-load — no SQL `LIMIT` over a joined collection (`41`, `08`)
+- [ ] Mappers/DTO factories are pure over loaded data — no repository or service calls per item (`41`, `04`)
+- [ ] DataLoader instances are per-request and tenant-filtered; batch functions return one entry per key in key order (`41`, `33`, `38`)
 - [ ] List queries have matching indexes (`13`, `08`)
 - [ ] `SELECT` only needed columns
 - [ ] Outbound calls have timeouts (`24`, `10`)

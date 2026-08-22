@@ -626,3 +626,4 @@ used without proving page-number UX is needed, no limit bound.
 - [`07-standard-responses.md`](./07-standard-responses.md) — response contract
 - [`13-database-design.md`](./13-database-design.md) — indexes
 - [`09-validation.md`](./09-validation.md) — DTO setup
+- [`41-n-plus-one-elimination.md`](./41-n-plus-one-elimination.md) — why a JOIN over a paginated one-to-many returns the wrong page, and the two-query alternative
