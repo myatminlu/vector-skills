@@ -37,6 +37,13 @@ const orders = await this.orders.findAllWithItems();
 
 Or dataloader-style batching if you're in a GraphQL/multi-call context.
 
+**The fix has its own failure mode.** A JOIN across a *paginated* one-to-many relation returns the
+wrong page — SQL `LIMIT` counts joined rows, not parents. And only one of the six shapes of N+1 is
+a loop like the one above; the rest hide in mappers, lazy getters, resolvers, remote calls, and
+cache misses. Before changing a list endpoint, read
+[`41-n-plus-one-elimination.md`](./41-n-plus-one-elimination.md) — detection by query counting,
+JOIN vs batch-load vs DataLoader, and the query-count test that keeps the fix in place.
+
 ## Indexes
 
 Every list endpoint is only as fast as its indexes.
@@ -224,7 +231,7 @@ Set up monitoring of p95/p99 latency per endpoint. Alert on regressions.
 
 ## Code review checklist
 
-- [ ] No N+1 — relations loaded in batch or explicit JOIN
+- [ ] No N+1 — relations loaded in batch or explicit JOIN; query count measured and flat in row count (`41`)
 - [ ] Every list query has matching indexes
 - [ ] DB pool size set appropriately; connections released
 - [ ] Responses not huge or unbounded; paginate / stream
@@ -239,6 +246,7 @@ Set up monitoring of p95/p99 latency per endpoint. Alert on regressions.
 ## See also
 
 - [`13-database-design.md`](./13-database-design.md) — indexes
+- [`41-n-plus-one-elimination.md`](./41-n-plus-one-elimination.md) — N+1 detection, the six shapes, JOIN vs batch-load vs DataLoader, regression tests
 - [`14-database-orm-patterns.md`](./14-database-orm-patterns.md) — N+1
 - [`08-pagination-filters-sorting.md`](./08-pagination-filters-sorting.md) — list endpoints
 - [`19-background-jobs.md`](./19-background-jobs.md) — offload heavy work

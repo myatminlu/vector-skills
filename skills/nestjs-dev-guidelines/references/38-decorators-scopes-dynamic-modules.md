@@ -121,3 +121,4 @@ export class StripeModule {
 - [`12-authentication-patterns.md`](./12-authentication-patterns.md) — `request.user` and the auth guard
 - [`17-pipelines-interceptors-guards.md`](./17-pipelines-interceptors-guards.md) — pipe vs decorator boundary
 - [`20-configuration.md`](./20-configuration.md) — env validation for dynamic-module options
+- [`41-n-plus-one-elimination.md`](./41-n-plus-one-elimination.md) — per-request DataLoader held in `AsyncLocalStorage` instead of `Scope.REQUEST`

@@ -577,7 +577,12 @@ for (const o of orders) o.items = await this.items.findByOrder(o.id);
 const orders = await this.orders.findAllWithItems();  // one query with JOIN / include
 ```
 
-See `24`, `14`.
+Watch the fix: on a **paginated** one-to-many, a JOIN with SQL `LIMIT` counts joined rows and
+returns the wrong page — batch-load the children in a second query instead. And this loop is only
+the most visible shape; the same defect hides in mappers, lazy relation getters, per-item
+resolvers, remote-call loops, and per-item cache misses.
+
+See `41` for detection, fix selection, and the query-count regression test. Also `24`, `14`.
 
 ---
 

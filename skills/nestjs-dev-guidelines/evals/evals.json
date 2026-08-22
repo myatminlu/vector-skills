@@ -551,6 +551,45 @@
         "tenant",
         "JWT"
       ]
+    },
+    {
+      "id": 44,
+      "prompt": "GET /v1/orders was running one query per order to load its line items, so a teammate rewrote the repository as `createQueryBuilder('order').leftJoinAndSelect('order.items', 'item').limit(20).offset(0)`. It's fast now, but QA says some pages come back with 3 orders instead of 20, and one order showed up on two different pages. What went wrong, and what is the correct fix? We also need to add payments to the same response.",
+      "expected_output": "Identifies row multiplication: joining a one-to-many multiplies rows per parent, and SQL LIMIT/OFFSET counts joined rows, not orders \u2014 so a page of 20 joined rows may be 3 orders, and offsets slice mid-order causing duplicates across pages. Fix: use entity-aware paging (`take`/`skip`, which pages parent ids first) or, preferably for a paginated list, a two-query batch-load \u2014 page the orders, then load items with `WHERE order_id = ANY($1)` and stitch via a Map. Warns that adding payments as a second sibling one-to-many JOIN produces a cartesian product (items \u00d7 payments per order) and must be a separate query, not another leftJoinAndSelect. Recommends a query-count regression test with fixtures holding more than one child per parent, since one-child fixtures hide the bug. Cites the N+1 elimination and pagination guidance.",
+      "files": [],
+      "must_include": [
+        "N+1",
+        "cartesian",
+        "take",
+        "skip",
+        "batch"
+      ]
+    },
+    {
+      "id": 45,
+      "prompt": "I think one of our NestJS endpoints has an N+1 but I can't prove it \u2014 Postgres slow-query logging shows nothing unusual and every query is under 2ms. How do I actually confirm it, find it in production, and then make sure it doesn't come back after the next refactor?",
+      "expected_output": "Explains why slow-query logs miss N+1: it is a query-count problem, not a per-query latency problem \u2014 each of the N queries is individually fast. Confirm by counting queries per request (Prisma `$on('query')`, a TypeORM counting logger, or a proxied pg Pool injected in the test module) and checking whether the count scales with the number of rows returned; the dev-log signal is the same SQL repeated back to back with different params. In production: count db.client spans per request trace (a staircase of identical short spans) and look for a query whose `calls` in pg_stat_statements dwarfs the traffic of any endpoint that would legitimately call it once. Prevent regression with an e2e query-count test that asserts the count is unchanged between a 1-row and a 20-row seed \u2014 assert the flat slope rather than a brittle absolute number \u2014 with fixtures that have more than one child per parent. Cites the N+1 elimination, observability, and testing guidance.",
+      "files": [],
+      "must_include": [
+        "N+1",
+        "count",
+        "pg_stat_statements",
+        "trace",
+        "test"
+      ]
+    },
+    {
+      "id": 46,
+      "prompt": "Our /v1/orders list endpoint issues exactly one query in the repository, but p95 latency still grows with page size. The repository code looks clean. Where else can an N+1 hide? And if the answer is DataLoader, how do I wire it in NestJS without making half the app request-scoped?",
+      "expected_output": "Lists the non-loop shapes: a mapper/DTO factory that takes a service and resolves a name per item; lazy relation access (TypeORM `Promise<T[]>` props) inside a `.map()`, where `Promise.all` makes it concurrent but still N queries; a per-item resolver or response-enriching interceptor; a per-item cache `getOrSet` that hides the N+1 until the cache goes cold; a loop of HTTP calls to another service; and per-item authorization checks that should be pushed into the WHERE clause instead. For DataLoader: it must be per-request for a security reason, not just performance \u2014 a singleton loader caches rows across requests and serves one tenant's data to another. Wire it by keeping loaders in an AsyncLocalStorage-backed store (nestjs-cls) behind a singleton registry, rather than a `Scope.REQUEST` provider whose scope cascades to every consumer and rebuilds the DI graph per request. Notes the batch-function contract: return one entry per key, in key order, with a placeholder for missing rows, and filter by tenant inside the batch function. Cites N+1 elimination, decorators/scopes, and multi-tenancy guidance.",
+      "files": [],
+      "must_include": [
+        "mapper",
+        "lazy",
+        "DataLoader",
+        "AsyncLocalStorage",
+        "tenant"
+      ]
     }
   ]
 }

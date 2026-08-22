@@ -379,3 +379,4 @@ it('works', async () => {
 - [`05-thinking-decision-trees.md`](./05-thinking-decision-trees.md) — when a test is optional
 - [`10-error-handling.md`](./10-error-handling.md) — asserting on the error response body
 - [`14-database-orm-patterns.md`](./14-database-orm-patterns.md) — repository integration tests
+- [`41-n-plus-one-elimination.md`](./41-n-plus-one-elimination.md) — query-count tests that assert a flat slope, and why fixtures need more than one child per parent

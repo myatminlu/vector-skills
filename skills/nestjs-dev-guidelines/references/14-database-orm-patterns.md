@@ -394,6 +394,14 @@ Repository can be mocked in tests; the ORM choice can change later.
 - Prisma `include: { memberships: { include: { organization: true } } }`.
 - Drizzle: explicit join + selectFields.
 - Measure with your logger timing + occasional `EXPLAIN`.
+- Count queries per request, not just their duration — an N+1 is fast queries in unbounded numbers,
+  so slow-query logs never surface it.
+- Prefer a two-query batch-load (page the parents, then `WHERE id = ANY($1)` the children) over a
+  JOIN whenever the list is paginated: SQL `LIMIT` over a joined collection returns the wrong page.
+
+Full playbook — detection, the six shapes N+1 takes, choosing between JOIN / batch-load /
+DataLoader, and the regression test — in
+[`41-n-plus-one-elimination.md`](./41-n-plus-one-elimination.md).
 
 ### Connection pooling
 
@@ -448,7 +456,7 @@ if (!user) return { error: 'not found' };               // ❌ not throwing
 - [ ] All queries parameterized; no string concatenation
 - [ ] Soft-delete filter applied consistently
 - [ ] Transactions wrap multi-row / multi-table writes
-- [ ] Relations fetched explicitly (no silent N+1)
+- [ ] Relations fetched explicitly (no silent N+1); paginated collections use entity-aware paging or a two-query batch-load (`41`)
 - [ ] Connection released in every code path (finally)
 - [ ] ORM choice is consistent across the project
 
@@ -458,3 +466,4 @@ if (!user) return { error: 'not found' };               // ❌ not throwing
 - [`15-migrations.md`](./15-migrations.md) — ORM-specific migrations
 - [`16-cascade-rules.md`](./16-cascade-rules.md) — ON DELETE semantics
 - [`24-performance.md`](./24-performance.md) — N+1, pool sizing
+- [`41-n-plus-one-elimination.md`](./41-n-plus-one-elimination.md) — the full N+1 playbook: detection, batch-load + stitch, DataLoader wiring

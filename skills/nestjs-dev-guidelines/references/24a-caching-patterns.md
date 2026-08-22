@@ -264,6 +264,7 @@ Tag by **key class** (e.g. `user-profile`, `orders-list`), **not** raw key, or y
 ## See also
 
 - [`24-performance.md`](./24-performance.md) — performance trade-offs and measurement
+- [`41-n-plus-one-elimination.md`](./41-n-plus-one-elimination.md) — the per-item cache-miss shape of N+1; multi-get plus batch-load for the misses
 - [`11-security.md`](./11-security.md) — authorization caching caveats
 - [`18-events.md`](./18-events.md) — event-driven invalidation
 - [`22-observability.md`](./22-observability.md) — cache metrics and traces
