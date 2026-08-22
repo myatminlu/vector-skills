@@ -24,6 +24,11 @@ Do not start without all three:
    test, lint — run it, record the exact commands and that they're green. This is the
    baseline every stage will be measured against. No verify signal → stop; adding one is the
    prerequisite work (and say so to the user).
+   **Record counts, not just green.** Green cannot detect a shrinking suite; a number can.
+   Capture the number of tests the runner *collects* (`pytest --collect-only -q`,
+   `jest --listTests | wc -l`, or the stack's equivalent) and the set of CI jobs that run on
+   a PR touching the area — every stage re-compares both against this baseline
+   (see [`02`](./02-safe-moves-mechanics.md), "Assert presence").
 2. **A clean slate.** Clean working tree, dedicated branch, current with the default branch.
 3. **A quiet window.** List open PRs touching the area. A restructure conflicts with all of
    them; either land/coordinate them first or scope the restructure away from hot paths.

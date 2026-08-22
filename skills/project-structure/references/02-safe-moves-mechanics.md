@@ -107,6 +107,30 @@ git grep -n "src/helpers" -- ':!*.lock' ':!dist' && echo "STILL REFERENCED"
 Zero hits (or only intentional shims) is the exit criterion for the stage, alongside the
 green verify run.
 
+## Assert presence, not just absence of failure
+
+The census catches stale references you grep for. A second class of silent breakage is
+things that *stop being counted*: path-driven discovery fails open — a glob that matches
+nothing is not an error, it's a green build doing less. Three cheap comparisons per stage
+turn that absence into a red diff:
+
+- **Collected-test count.** Compare the runner's collected count against the Phase-0
+  baseline; a drop without deliberately deleted tests means discovery broke. Make zero-
+  collected a hard failure while you're at it: no `--passWithNoTests`, pytest's exit code 5
+  not swallowed by a wrapper, `go test ./...` counted rather than trusted (it prints
+  `no test files` and still exits 0).
+- **CI check set.** Diff the list of jobs that actually ran on the stage's PR against the
+  baseline PR's list. A workflow skipped by a stale `paths:` filter shows up as *absent*,
+  never as red — only a comparison sees it.
+- **Artifact inventory.** When the stage touches anything a build packages, diff the file
+  list inside the built artifact (`docker export ... | tar t`, `npm pack --dry-run`,
+  `tar tzf dist/*`) before vs after: a pure move shows renames only; a *disappearance* is
+  next month's prod incident caught in the PR.
+
+These are one-line scripts, and they outlive the migration: keep the test-count and
+check-set assertions in CI permanently and they also catch the slow version of this
+failure — a team's tests drifting out of discovery over months.
+
 ## Shims: gradual migration for consumed paths
 
 For old paths with consumers outside this migration's reach (other repos, published
@@ -139,7 +163,9 @@ plan.
 
 The full exit gate for a stage, in order:
 
-1. Recorded verify commands green (build, typecheck, tests, lint).
+1. Recorded verify commands green (build, typecheck, tests, lint) — **and the presence
+   checks above match baseline**: collected-test count, CI check set, artifact inventory
+   where applicable.
 2. Census grep clean for this stage's old paths.
 3. Runtime smoke where the stage touched entry points or dotted-path strings — start the
    app/worker once; import-time and discovery-time failures don't show in unit tests.
@@ -166,6 +192,7 @@ the stage and amend the plan (per `01`).
 - [ ] Imports fixed via tooling (LSP / typechecker-driven / codemod), verified by the typechecker
 - [ ] Dynamic-import / reflection / dotted-path greps run before the plan, rechecked after moves
 - [ ] Census grep after every stage: CI paths filters, CODEOWNERS, Docker, configs, docs — zero stale hits
+- [ ] Presence asserted per stage: collected-test count and CI check set match baseline; artifact inventory diff shows renames only; zero-tests-collected fails the build
 - [ ] Runtime smoke after stages touching entry points or discovery paths
 - [ ] Case-only renames done as two-step moves
 - [ ] Shims: external consumers only, deprecation-noted, removal-staged
