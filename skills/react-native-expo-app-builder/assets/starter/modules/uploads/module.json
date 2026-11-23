@@ -1,0 +1,18 @@
+{
+  "name": "uploads",
+  "title": "Photo and file uploads",
+  "summary": "`requestMultipart` sends `{ uri, name, type }` parts through React Native's XMLHttpRequest with a long time-out — the global `expo/fetch` rejects them — plus the picker rules that keep the server from refusing the file.",
+  "when": "Profile pictures, attachments, documents — any file the user picks.",
+  "requires": [],
+  "dependencies": [],
+  "plugins": [],
+  "remove": [],
+  "flows": [],
+  "screens": [],
+  "dataInventory": [
+    "| Uploaded files | upload | `<backend storage>` | `<processors>` | `<purpose>` | `<retention>` | yes |"
+  ],
+  "claudeRules": [
+    "Multipart uploads use `requestMultipart` (`src/modules/uploads/upload.ts`), never the global fetch. Keep the image picker's `quality` below 1, ask for the compatible (JPEG) representation, measure the file itself rather than the picker's size, and validate the extension as well as the type."
+  ]
+}

@@ -1,0 +1,37 @@
+appId: ${APP_ID}
+name: Sign in, save an item, see it in Saved, sign out
+tags:
+  - smoke
+---
+- runFlow: subflows/fresh-launch.yaml
+- runFlow: subflows/sign-in.yaml
+- extendedWaitUntil:
+    visible: "Getting started"
+    timeout: 15000
+- tapOn: "Getting started"
+- tapOn:
+    id: item-save
+- extendedWaitUntil:
+    visible: "Saved"
+    timeout: 10000
+- runFlow: subflows/back.yaml
+- tapOn:
+    id: open-saved
+- extendedWaitUntil:
+    visible:
+      id: saved-list
+    timeout: 10000
+- assertVisible: "Getting started"
+- runFlow: subflows/back.yaml
+- runFlow: subflows/open-account.yaml
+- assertVisible:
+    id: account-email
+- scrollUntilVisible:
+    element:
+      id: account-sign-out
+- tapOn:
+    id: account-sign-out
+- extendedWaitUntil:
+    visible:
+      id: sign-in-screen
+    timeout: 10000

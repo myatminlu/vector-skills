@@ -1,0 +1,23 @@
+{
+  "name": "auth",
+  "title": "Sign-in and session",
+  "summary": "Email sign-in, tokens in the OS secure store, single-flight refresh, protected route groups, sign-out that works offline, in-app account deletion, and a Saved list as the example of an account-only feature.",
+  "when": "The backend has user accounts.",
+  "requires": [],
+  "dependencies": ["expo-secure-store"],
+  "plugins": ["expo-secure-store"],
+  "remove": [],
+  "flows": ["auth"],
+  "screens": [
+    "| — | Sign in | `/sign-in` | launch when signed out | — | `POST /auth/login` | error | public |",
+    "| — | Saved | `/saved` | home header | `GET /me/saved` | open item; save → `POST /me/saved` | loading, empty, error | account |",
+    "| — | Delete account | sheet | account | — | `DELETE /auth/me` | busy, error | account |"
+  ],
+  "dataInventory": [
+    "| Email, password hash | sign-up / sign-in | backend database | — | account | until account deletion | yes |",
+    "| Saved items | Save | backend database | — | the Saved list | until removed or account deletion | yes |"
+  ],
+  "claudeRules": [
+    "Signed-in data reads the user from `useAuth()` (`src/modules/auth/session`); a screen that calls `useCurrentUser()` is wrapped in `withAccount`. Sign-out must work offline; only a refresh the server refuses ends a session."
+  ]
+}

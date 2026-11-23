@@ -1,9 +1,0 @@
-# Flows run in this order by `npm run e2e`. Each one starts from a clean install state.
-flows:
-  - guest.yaml
-  - signed-in.yaml
-executionOrder:
-  continueOnFailure: false
-  flowsOrder:
-    - guest
-    - signed-in

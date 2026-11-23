@@ -1,0 +1,26 @@
+# Signs in with the QA account from the environment (QA_EMAIL / QA_PASSWORD). Needs the auth module's sign-in screen.
+appId: ${APP_ID}
+---
+- tapOn:
+    id: sign-in-email
+- inputText: ${QA_EMAIL}
+- tapOn:
+    id: sign-in-password
+- inputText: ${QA_PASSWORD}
+# Submit with the keyboard's return key (the password field's "go"), never `hideKeyboard`: on iOS that taps the
+# screen, and the tap can land on "Continue without an account" just above the keyboard — a guest, not a sign-in.
+- pressKey: Enter
+- runFlow: dismiss-system-prompts.yaml
+# Only tap the button if the form is still there (the return key normally submitted it already).
+- runFlow:
+    when:
+      visible:
+        id: sign-in-submit
+    commands:
+      - tapOn:
+          id: sign-in-submit
+- extendedWaitUntil:
+    visible:
+      id: home-list
+    timeout: 15000
+- runFlow: dismiss-system-prompts.yaml

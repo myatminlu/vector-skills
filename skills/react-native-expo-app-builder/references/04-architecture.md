@@ -51,26 +51,37 @@ The organising idea: **anything that applies to every screen is built once, unde
 
 ## 3. Folder structure
 
+The starter's layout (`assets/starter/`), core first, then what a module adds:
+
 ```
 src/
-  app/                    routes only        (auth)/ (onboarding)/ (app)/ (app)/(sheets)/
-  features/<domain>/      components/  queries.ts  <logic>.ts  <logic>.test.ts
+  app/                    routes only        (app)/  (app)/(sheets)/  — (auth)/ comes with the auth module
+  screens/                top-level screens shared by every shell (home, account)
+  features/<domain>/      the core's example domain: queries.ts, <logic>.ts, <logic>.test.ts
+  modules/                slots.ts (extension points), types.ts, account-gate.tsx,
+                          index.ts + strings.ts (generated from modules.json)
+  modules/<name>/         one folder per installed module: index.ts (registerModule), its api, components,
+                          queries, strings.ts, tests
   components/ui/          design-system primitives
   constants/theme.ts      tokens
-  navigation/             typed route builders, screen-option presets
-  providers/              app providers, session, notifications, toast
-  lib/api/                client, errors, scheduler, stream reader, one module per domain
-  lib/                    storage, token store, connectivity, push, device, text size
-  i18n/                   dictionaries, typed t(), formatters, provider
+  navigation/             typed route builders, screen-option presets, shell.ts (stack or tabs)
+  providers/              app providers (modules add theirs through the registry)
+  lib/api/                client, errors, scheduler, one module per core domain
+  lib/                    storage, connectivity, text scaling, jwt
+  i18n/                   core strings, typed t(), formatters, provider, extra-language type
   config/env.ts           the only reader of the environment
-  types/                  API types
-  dev/                    QA tour, dev gallery
+  types/                  API types derived from the generated OpenAPI types
+  dev/                    QA tour
 plugins/                  native changes as config plugins
-scripts/                  contract smoke, version bump, release launch test
-locales/                  native permission strings per language
+scripts/                  mock API + mock/<module>.mjs, smoke + smoke/<module>.mjs, e2e, version bump, launch test
+.maestro/                 core.yaml + one flow per module, subflows/
+modules.json              the installed modules — the source of truth for the generated files
 ```
 
-Route groups mirror **session states**, not features: signed out, onboarding, the app. Sheets get their own group so their presentation options live in one layout.
+Route groups mirror **session states**, not features: signed out (auth module), onboarding, the app. Sheets get their
+own group so their presentation options live in one layout. A cross-cutting feature is a **module**: it registers what
+it adds (`registerModule` in `src/modules/slots.ts`) instead of editing core screens, so it can be added or left out
+without touching anything else — and the same shape works for the app's own features.
 
 ---
 
@@ -79,7 +90,7 @@ Route groups mirror **session states**, not features: signed out, onboarding, th
 ### Config
 
 - One module reads the environment, with **one literal read per variable**. Bundlers inline only literal property accesses; a helper that indexes the environment by name returns `undefined` in every release build while working perfectly in development.
-- It trims, validates and throws at start-up when a required value is missing. Because that throw would be a launch crash in a release, the **build** must refuse first: the app-config script rejects a production bundle that lacks the required values (`assets/starter/app.config.js`).
+- It trims, validates and throws at start-up when a required value is missing. Because that throw would be a launch crash in a release, the **build** must refuse first: the app-config script rejects a production bundle that lacks the required values (`assets/starter/core/app.config.js`).
 - A value that has to equal something published elsewhere — the privacy URL in the store listing — is a constant, not an environment variable.
 - A version constant feeds both the "about" row and the persisted-cache buster; the bump script moves it with the store version.
 - Everything in a client bundle is public. Secrets do not go here.

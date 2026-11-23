@@ -1,0 +1,16 @@
+{
+  "name": "offline-cache",
+  "title": "Offline cache",
+  "summary": "Persists the queries marked `meta: { persist: true }` to SQLite, so the last list stays readable offline and on a cold start; a new app version never reads the old cache.",
+  "when": "People open the app on a weak or no connection and expect yesterday's content.",
+  "requires": [],
+  "dependencies": ["@tanstack/react-query-persist-client", "@tanstack/query-async-storage-persister"],
+  "plugins": [],
+  "remove": [],
+  "flows": [],
+  "screens": [],
+  "dataInventory": [],
+  "claudeRules": [
+    "Only queries with `meta: { persist: true }` are written to disk — never one that holds tokens or another person's data. The cache is busted by `APP_VERSION`."
+  ]
+}

@@ -46,7 +46,7 @@ Whoever holds the signing identity does the final archive and upload. On the cas
 
 ## 4. Environment guards
 
-- A release bundle made without its environment file **still exits 0** and then throws at start-up. Make the build refuse instead (for Expo: an `app.config.js` guard — the react-native-expo-app-builder skill's starter ships one in `assets/starter/app.config.js`, together with a guard that refuses store builds still carrying placeholder identity or legal URLs).
+- A release bundle made without its environment file **still exits 0** and then throws at start-up. Make the build refuse instead (for Expo: an `app.config.js` guard — the react-native-expo-app-builder skill's starter ships one in `assets/starter/core/app.config.js`, together with a guard that refuses store builds still carrying placeholder identity or legal URLs).
 - **Prove the values were inlined**: search the release JavaScript for a known public value. If the bundle contains the variable's *name* instead, it was read dynamically and is `undefined` at runtime. (Bytecode will not match a plain search — check the pre-bytecode export or use `strings`.)
 - The **push environment** follows the build profile. A release built without the production flag talks to the sandbox push service, and production pushes silently never arrive.
 - In a fresh worktree, confirm the environment file is present and complete before building.

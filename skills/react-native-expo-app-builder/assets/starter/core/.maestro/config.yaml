@@ -1,0 +1,7 @@
+# Generated from modules.json by the react-native-expo-app-builder scripts. Each flow starts from a clean install.
+flows:
+  - core.yaml
+executionOrder:
+  continueOnFailure: false
+  flowsOrder:
+    - core

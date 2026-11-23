@@ -1,0 +1,21 @@
+appId: ${APP_ID}
+name: Browse the list, open an item, go back, open Account
+tags:
+  - smoke
+---
+- runFlow: subflows/fresh-launch.yaml
+- runFlow: subflows/enter-app.yaml
+- extendedWaitUntil:
+    visible: "Getting started"
+    timeout: 15000
+- tapOn: "Getting started"
+- assertVisible:
+    id: item-screen
+- runFlow: subflows/back.yaml
+- extendedWaitUntil:
+    visible:
+      id: home-list
+    timeout: 10000
+- runFlow: subflows/open-account.yaml
+- scrollUntilVisible:
+    element: "Privacy policy"

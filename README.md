@@ -18,7 +18,7 @@ npx skills add myatminlu/vector-skills --skill react-native-expo-app-builder  # 
 
 | Skill | What it does |
 |---|---|
-| [`react-native-expo-app-builder`](./skills/react-native-expo-app-builder/) | Build a production-ready React Native app with Expo for iOS and Android from a design (Figma, screenshots) and an API (OpenAPI or docs). One command creates the project on the **latest Expo SDK** and adds a tested starter: API client with single-flight token refresh, SSE streaming and native uploads, guest mode, AI-consent gate, remote flags, i18n with tall-script typography, tablet layout, offline banner, mock API, OpenAPI type generation, contract smoke test, and **Maestro end-to-end tests** on the iOS simulator and Android emulator. Plus the process around it: one-message intake of the decisions a design and an API never contain, layered architecture and folder structure, build order, parallel agent workspaces, verification and hardening matrix. SKILL.md + 9 reference files + `scripts/create-app.mjs` + starter + evals. |
+| [`react-native-expo-app-builder`](./skills/react-native-expo-app-builder/) | Build a production-ready React Native app with Expo for iOS and Android from a design (Figma, screenshots) and an API (OpenAPI or docs). One command creates the project on the **latest Expo SDK** with a tested core — API client with single-flight token refresh, offline banner, script-aware text and screen primitives, mock API, OpenAPI types, contract smoke test, **Maestro end-to-end tests** on the iOS simulator and Android emulator — plus **only the modules the app needs**: auth, guest mode, AI consent, SSE streaming, uploads, remote config, offline cache, text size, Burmese, native tabs (`add-module` adds more later). Push, purchases, social sign-in, crash reporting, OTA and analytics are recipes written at the time from current docs. Plus the process around it: one-message intake, layered architecture and folder structure, build order, parallel agent workspaces, hardening matrix. A weekly CI canary builds the starter on the latest SDK. SKILL.md + 10 reference files + `create-app.mjs` / `add-module.mjs` + starter + evals. |
 | [`app-store-play-store-submission`](./skills/app-store-play-store-submission/) | Get an Expo / React Native app approved on the **Apple App Store and Google Play**, and fix **App Store or Google Play rejections** in one turn. Pre-submission audit (App Review Guidelines, App Privacy and Data safety, account deletion, guest access, third-party AI consent, subscriptions, screenshots), version and build numbers, signing, release builds (AAB, iOS archive), a launch test on the newest iOS, TestFlight, hand-over, rejection protocol with reviewer reply templates, and post-launch notices and deadlines. SKILL.md + 4 reference files + release scripts + evals. |
 
 ### Backend — NestJS
@@ -47,6 +47,18 @@ OpenAPI file or docs), and ask it to build the app. It reads everything, sends b
 decisions that are expensive to reverse (each with a recommendation), creates the project with
 `create-expo-app@latest`, adds the tested starter, verifies your API with a smoke script, and builds feature slices
 that it tests itself on both platforms.
+
+**Do I get code my app doesn't need?**
+No. Every app gets the core (what every app needs) and only the modules its brief calls for — an app without
+accounts gets no sign-in code, an app without AI gets no consent sheet. `create-app.mjs --list` shows each module and
+when it is worth it; `add-module.mjs` adds one later and regenerates what depends on it. Modules plug in through one
+registry, so none of them edits a core file, and a feature of your own can follow the same shape.
+
+**Won't code inside a skill go out of date?**
+The parts that would are kept out of it. The core is mostly plain TypeScript with unit tests; vendor-heavy features
+(push, purchases, social sign-in, crash reporting, OTA, analytics) are recipes the agent writes from the current docs;
+and a weekly CI canary in this repository builds the starter with no module, with auth and with every module on
+whatever Expo SDK is `latest`, so a breaking SDK change is found within a week — and fixed once for every future app.
 
 **Which Expo SDK and library versions does it use?**
 Whatever is `latest` on the day it runs. The skill pins no versions: `create-expo-app@latest`, `npx expo install` for

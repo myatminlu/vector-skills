@@ -1,0 +1,22 @@
+/** English strings of the auth module. Every installed language must have them too — `npm test` checks. */
+export const strings = {
+  auth_title: 'Welcome',
+  auth_subtitle: 'Sign in to continue',
+  auth_email: 'Email',
+  auth_password: 'Password',
+  auth_sign_in: 'Sign in',
+  auth_email_required: 'Enter your email.',
+  auth_password_required: 'Enter your password.',
+  err_sign_in: 'The email or password is wrong.',
+  home_saved: 'Saved',
+  item_save: 'Save',
+  item_saved: 'Saved',
+  saved_title: 'Saved',
+  saved_empty: 'You have not saved anything yet',
+  account_signed_in_as: 'Signed in as {email}',
+  account_sign_out: 'Sign out',
+  account_delete: 'Delete account',
+  account_delete_title: 'Delete your account?',
+  account_delete_body: 'Your account and everything you saved will be deleted for good. This cannot be undone.',
+  account_delete_confirm: 'Delete for good',
+} as const;

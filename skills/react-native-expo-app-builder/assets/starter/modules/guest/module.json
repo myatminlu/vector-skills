@@ -1,0 +1,18 @@
+{
+  "name": "guest",
+  "title": "Guest browsing",
+  "summary": "Use the app without an account (App Store 5.1.1(v)): public content works, account-only actions open a sign-in sheet, account-only routes reached by deep link show a sign-in prompt, and account-only requests are answered locally instead of sent.",
+  "when": "The app has accounts and any content or feature that is not account-based.",
+  "requires": ["auth"],
+  "dependencies": [],
+  "plugins": [],
+  "remove": [],
+  "flows": ["guest"],
+  "screens": [
+    "| — | Sign-in required | sheet | any account-only action by a guest | — | sign in / cancel | — | — |"
+  ],
+  "dataInventory": [],
+  "claudeRules": [
+    "Account-only screens are wrapped in `withAccount(Screen, 'feature')` (`src/modules/account-gate`); every entry point calls `slots.useRequireAccount()('feature')` first. Never call `useCurrentUser()` from a guest-reachable component."
+  ]
+}

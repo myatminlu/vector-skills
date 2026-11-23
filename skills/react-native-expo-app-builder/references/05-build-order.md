@@ -2,7 +2,7 @@
 
 ## Contents
 
-0. The starter and `create-app.mjs`
+0. The starter: core, modules and recipes
 1. Phase exits at a glance
 2. Why this order
 3. The slice template
@@ -16,63 +16,71 @@
 
 ---
 
-## 0. The starter and `create-app.mjs`
+## 0. The starter: core, modules and recipes
 
-Phase 2 has been built once already: the foundation of the case-study app, rewritten generically, lives in
-`assets/starter/`. It is not a pinned template. `scripts/create-app.mjs` creates the project with
-`create-expo-app@latest`, so every new app starts on whatever SDK is current that day, and lays the starter over it:
+Phase 2 has been built once already, from the case-study app's foundation, and split three ways:
+
+| Layer | What | Where | Goes stale? |
+|---|---|---|---|
+| **Core** | What every app needs: config and build guards, the API client (refresh, 401 policy, scheduler, typed errors), server state, connectivity and offline banner, text/screen primitives, English with a parity test, navigation shell, the extension points, QA tour, Maestro, mock API, smoke script, CI | `assets/starter/core/` | Rarely — most of it is plain TypeScript with tests |
+| **Modules** | Opt-in features: `auth`, `guest`, `ai-consent`, `streaming`, `uploads`, `remote-config`, `offline-cache`, `text-size`, `lang-my`, `tabs` — each with its code, strings, tests, mock endpoints, smoke checks, Maestro flow and docs rows | `assets/starter/modules/<name>/` | Their library glue can; the weekly canary catches it |
+| **Recipes** | Features whose vendor SDK changes too often for code to stay right: push, purchases, social sign-in, crash reporting, OTA updates, analytics | `references/09-recipes.md` | No — written at the time from current docs |
+
+**Choose the modules in Phase 0**, from the brief: accounts → `auth`; any public content → `guest`; personal data to
+a third-party AI → `ai-consent`; an AI chat or live feed → `streaming`; file pickers → `uploads`; anything to switch
+off between releases → `remote-config`; reading offline → `offline-cache`; small type or older users → `text-size`;
+Burmese (or another tall script, by copying it) → `lang-my`; two or more top-level areas → `tabs`. Required modules come
+along (guest and ai-consent need auth). `node scripts/create-app.mjs --list` prints the catalog with a "when" per module.
 
 ```bash
-node <skill>/scripts/create-app.mjs <app-dir> --name "My App" --bundle-id com.acme.myapp [--conductor]
+node <skill>/scripts/create-app.mjs <app-dir> --modules auth,guest,ai-consent,streaming --name "My App" --bundle-id com.acme.myapp
+node <skill>/scripts/add-module.mjs <app-dir> remote-config     # later; regenerates and rechecks
 ```
 
-What the script does, in order (it stops with a clear message at the first failure; fix the cause and rerun with
+What `create-app.mjs` does (it stops with a clear message at the first failure; fix the cause and rerun with
 `--existing --force`):
 
-1. `npx create-expo-app@latest <app-dir> --yes` — default template, Expo's `AGENTS.md` included.
-2. Removes the template's example code and unused images; copies `assets/starter/`; adds `docs/PROJECT_BRIEF.md` and
-   `docs/HUMAN_TASKS.md` from the templates (and `.conductor/` with `--conductor`).
-3. Patches `app.json` (name, slug, scheme, bundle id, build numbers, tablet support, config plugins, `extra.legal`),
-   `tsconfig.json`, `.gitignore` and the package scripts; creates `.env` from `.env.example`.
-4. Points each GitHub Action in the workflow at its current major release (Dependabot keeps it there).
-5. `npx expo install` for the starter's libraries — Expo picks the versions that match the SDK; lint tooling the same
-   way; `tsx` and `@types/node` at their latest release.
-6. Generates `src/types/openapi.d.ts` from `docs/openapi.json` with `openapi-typescript@latest`.
-7. Runs typecheck, lint and the unit tests, and prints the versions it ended up with — record them in the brief.
+1. `npx create-expo-app@latest <app-dir> --yes` — so every app starts on the SDK that is current that day.
+2. Removes the template's example code and unused images; copies the core and the chosen modules; adds
+   `docs/PROJECT_BRIEF.md` and `docs/HUMAN_TASKS.md` (and `.conductor/` with `--conductor`).
+3. Writes `modules.json` and generates from it `src/modules/index.ts` (registers the modules), `src/modules/strings.ts`
+   (their strings and languages), `.maestro/config.yaml`, and the module sections of `docs/SCREENS.md`,
+   `docs/DATA_INVENTORY.md`, `CLAUDE.md` and `README.md`; merges each module's endpoints into `docs/openapi.json`.
+4. Patches `app.json` (name, slug, scheme, bundle id, build numbers, tablet support, config plugins, `extra.legal`),
+   `tsconfig.json`, `.gitignore` and the package scripts; creates `.env`; points each GitHub Action at its current major.
+5. `npx expo install` for the core's and the modules' libraries (versions follow the SDK); lint tooling the same way;
+   `tsx` and `@types/node` at their latest release; generates the API types.
+6. Runs the unit tests, typecheck and lint, and prints the versions it ended up with — record them in the brief.
 
-**What it contains:** the config module and build guards (no release bundle without an API address; no store build
-with `example` identity or legal URLs); the API client (single-flight refresh, a 401 policy that never signs people out
-for being offline, scheduler, typed errors, SSE, native multipart); the session provider; guest mode with
-`withAccount` / `useRequireAccount`; a versioned AI-consent gate; remote flags; TanStack Query with user-scoped keys and
-opt-in persistence; the connectivity verdict and offline banner; script-aware `AppText`, `Screen` (keyboard on both
-platforms, tablet column), buttons, fields, rows, sheets, states, error boundary; English plus a tall-script second
-language (Burmese) with a parity test; protected route groups, system tabs, typed routes; a QA tour, Maestro flows, a
-local mock API with an OpenAPI file, types generated from it, a contract smoke script with `--spec`, the release launch
-test and version bump script; CI and Dependabot; `CLAUDE.md` next to Expo's `AGENTS.md`.
+It prints about twenty lines; every command's full output goes to a log file in the temp directory (its path is
+printed). `--verbose` streams everything.
 
-**How it was verified:** typecheck, lint and the unit tests; the smoke script against the mock API (and catching a
-deliberately broken spec); a Release build on an iOS simulator and a release APK with R8 on an Android emulator, each
-passing both Maestro flows — guest browsing with the sign-in gates, and sign-in → save → consent → streamed answer →
-sign-out. `create-app.mjs` then reproduced it from `create-expo-app@latest`. Treat that as evidence about the SDK that
-was current then: on a newer SDK, run the same checks before building on it.
+**How modules plug in.** The core exposes extension points in `src/modules/slots.ts`; each module's `index.ts` calls
+`registerModule({...})` with what it adds — a provider, overrides (`useRootGate`, `useSessionUser`, `useRequireAccount`,
+`withConsent`, `useFlag`, `useTextScale`), and contributions (account sections, item and home actions, stack screens,
+tour steps, fonts, text scripts). No module edits a core file, so a module can be added or left out freely, and a
+feature of the app's own is just another module folder.
 
-**When today's SDK breaks the starter** (a moved import, a renamed option, a type error after step 7): read the SDK's
-changelog and upgrade notes, fix the starter code forward in the new app, and keep going. Do not install an older SDK
-to make the starter compile. If the fix is general, it belongs in this skill's `assets/starter/` too — say so in the
-report.
+**How it was verified:** apps with no module, with `auth`, and with all ten were each created from
+`create-expo-app@latest` and passed typecheck, lint and the unit tests, both production bundles, and the contract smoke
+against the mock API (with shape checks against the merged spec); `add-module` added `guest` (and with it `auth`) to the
+core-only app and its checks passed. The all-modules app was built for an iOS simulator (Release) and an Android
+emulator (release APK, R8 on), and every Maestro flow passed on both. Treat that as evidence about the SDK that was
+current then; on a newer SDK the same checks run as part of `create-app.mjs`.
+
+**When today's SDK breaks the starter** (a moved import, a renamed option, a type error at step 6): read the SDK's
+changelog and upgrade notes, fix the code forward in the new app, and keep going — never install an older SDK to make
+the starter compile. If the fix is general, it belongs in this skill's `assets/starter/` too; say so in the report.
 
 **How to adopt it:**
 
 1. Set the identity in `app.json` if the script ran with placeholders (name, slug, scheme, bundle id, package,
    `extra.legal`) — store builds refuse to start until you do — and the colours and type in `src/constants/theme.ts`.
 2. Point `EXPO_PUBLIC_API_URL` at the real API, or keep the mock while the API is not ready; generate
-   `src/types/openapi.d.ts` from the backend's spec and update `src/types/api.ts`.
-3. Replace the example screens (home, item, ask, saved) with the app's; keep the gates, primitives and harness, and
-   update the QA tour, the Maestro flows and `docs/SCREENS.md` as you go. Swap the second language for the app's.
+   `src/types/openapi.d.ts` from the backend's spec and update the core's and modules' `types.ts`.
+3. Replace the example screens (home list, item) with the app's; keep the gates, primitives and harness, and update the
+   QA tour, the Maestro flows and `docs/SCREENS.md` as you go.
 4. Run the exit test of Phase 2 on both platforms before the walking skeleton.
-
-It does **not** include push, purchases, social sign-in, crash reporting, onboarding or over-the-air updates — they
-are per-app decisions with console work attached (see the app-store-play-store-submission skill).
 
 ---
 

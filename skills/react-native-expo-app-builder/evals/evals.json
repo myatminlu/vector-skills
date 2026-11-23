@@ -157,7 +157,7 @@
     {
       "id": 15,
       "prompt": "Set up the foundation for our new Expo app — we have the design and the backend's OpenAPI file.",
-      "expected_output": "Runs the skill's create-app.mjs (create-expo-app@latest plus the starter, versions resolved at that moment) or applies the starter to the existing fresh project, sets the identity and theme, generates the API types from the backend's OpenAPI file and runs the contract smoke script with --spec, keeps the gates, primitives and harness, replaces the example screens, and verifies the Phase 2 exit (signed-out, guest and signed-in sessions land correctly on both platforms; Maestro flows pass on both).",
+      "expected_output": "Runs the skill's create-app.mjs (create-expo-app@latest plus the core and only the modules the brief needs, versions resolved at that moment) or applies the starter to the existing fresh project, sets the identity and theme, generates the API types from the backend's OpenAPI file and runs the contract smoke script with --spec, keeps the gates, primitives and harness, replaces the example screens, and verifies the Phase 2 exit (each session state lands correctly on both platforms; Maestro flows pass on both).",
       "files": [],
       "must_include": [
         "create-app",
@@ -165,6 +165,17 @@
         "types",
         "smoke",
         "Maestro"
+      ]
+    },
+    {
+      "id": 16,
+      "prompt": "Our next app is a simple recipe catalogue: public content only, no accounts, no AI features, English only, and two tabs (recipes and settings). Set up the foundation.",
+      "expected_output": "Runs the skill's create-app.mjs with only the modules this brief needs — tabs, and offline-cache if offline reading matters — and explicitly not auth, guest, ai-consent or streaming, because there are no accounts and no AI. Explains that the core already has the API client, offline banner, primitives, English strings and the Maestro harness, and that a module can be added later with add-module.mjs when the brief changes. Still proves the build on both platforms and records the versions create-app printed in the brief.",
+      "files": [],
+      "must_include": [
+        "create-app",
+        "tabs",
+        "add-module"
       ]
     }
   ]

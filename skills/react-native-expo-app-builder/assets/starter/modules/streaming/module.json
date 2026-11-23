@@ -1,0 +1,18 @@
+{
+  "name": "streaming",
+  "title": "Streaming (server-sent events)",
+  "summary": "Reads a server-sent event stream as it arrives (multi-byte safe, errors inside a 200 included) and an Ask screen that streams an answer — consent-gated with ai-consent, account-only with guest, switchable with remote-config.",
+  "when": "An AI chat, a live feed, or any endpoint that answers with `text/event-stream`.",
+  "requires": [],
+  "dependencies": [],
+  "plugins": [],
+  "remove": [],
+  "flows": ["streaming"],
+  "screens": [
+    "| — | Ask | `/ask?itemId=` | item | — | `POST /ask` (SSE) | thinking, streaming, error, switched off | account + consent when installed |"
+  ],
+  "dataInventory": [],
+  "claudeRules": [
+    "Streams go through `apiFetch(…, { unscheduled: true })` and `readSseStream` (`src/modules/streaming/sse.ts`); an error can arrive inside a 200, so the stream's own error event is handled too."
+  ]
+}
