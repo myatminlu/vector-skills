@@ -1,0 +1,16 @@
+{
+  "name": "text-size",
+  "title": "In-app text size",
+  "summary": "A text-size setting in Account (90–130%) that every `AppText` and `FormField` follows, multiplied with the phone's own font scale and capped per variant so layouts hold.",
+  "when": "Reading-heavy apps, older users, or a design whose type runs small.",
+  "requires": [],
+  "dependencies": [],
+  "plugins": [],
+  "remove": [],
+  "flows": [],
+  "screens": [],
+  "dataInventory": [],
+  "claudeRules": [
+    "Text sizes come from `TypeScale` × the in-app text size; raw `Text`/`TextInput` must use `scaleFontSize` and `fontScaleCap` (`src/lib/text-scale.ts`). Text in a fixed-size box passes an explicit `fontSize` and is exempt."
+  ]
+}

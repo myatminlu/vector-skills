@@ -1,0 +1,182 @@
+{
+  "skill_name": "react-native-expo-app-builder",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I'm starting a new mobile app. Attached are the design export (32 screens, dark theme, English and Burmese strings) and AI_AGENT_API_REFERENCE.md. I want native UI for both iOS and Android. Give me a report of what you will do before you start.",
+      "expected_output": "Runs intake instead of scaffolding screens: reads everything, builds a screen-to-endpoint coverage matrix, and returns ONE decision batch covering the packs a design and an API never contain (guest access, sign-in methods, payments per platform, languages, tablet, data shared with third parties), each with a recommended default and the cost of changing it later. Lists assumed defaults, asks for a QA account through an environment variable rather than chat, and hands over a human task list with lead times. Names the three planned checkpoints and records decisions in docs/PROJECT_BRIEF.md.",
+      "files": [],
+      "must_include": [
+        "decision",
+        "recommend",
+        "guest",
+        ".env",
+        "lead time",
+        "brief"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Just scaffold all the screens from this Figma export for now, we'll wire the API later. Don't overthink it.",
+      "expected_output": "Does not refuse and does not lecture. Starts the scaffold, but keeps 'later' cheap: screens read data through the real API-layer interface backed by typed fixtures marked unverified, everything that applies to every screen (tokens, text and screen primitives, states, the account wrapper) is built once underneath, and the navigation shell plus the first screens get one look from the owner on a device before the remaining screens are built. Asks only the few decisions that are expensive to reverse, each with a recommendation.",
+      "files": [],
+      "must_include": [
+        "shell",
+        "primitive",
+        "device",
+        "fixture"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Here are the API docs for our backend (REST, JWT auth, SSE for chat). Start building the login and home screens against it.",
+      "expected_output": "Treats the docs as claims: asks for a QA account via environment variables, writes a contract smoke script that prints status and response shape for every endpoint the first slices need (reversible writes only, throttled to the rate limit), compares with the docs and sends one gap report. Mentions error envelope, 401 semantics, rate limits and normalising unstable shapes at the boundary before screens are built.",
+      "files": [],
+      "must_include": [
+        "smoke",
+        "shape",
+        "gap",
+        "limit",
+        "401"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "why are the Google and Apple sign-in buttons missing in this new workspace? they were there in the other one. third time this happens",
+      "expected_output": "Recognises an environment-class defect rather than deleted UI: the git-ignored .env was not copied or is stale in the new worktree, or the values are read dynamically and not inlined in release bundles. Because it is the third report, goes to the root cause and fixes it at the source — a complete .env.example, files-to-copy pinned in repo settings, a setup script that fails loudly — and sweeps for the same pattern (other features that hide themselves when unconfigured). Verifies in a release bundle.",
+      "files": [],
+      "must_include": [
+        ".env",
+        "cause",
+        "setup script",
+        "copy",
+        "pattern"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Our chat feature sends the user's messages and uploaded photos to Gemini through our backend. Is there anything I need to do for the stores?",
+      "expected_output": "Says yes: an AI data inventory traced from the backend (what is sent, to whom, what is never sent), an in-app consent step before the first send that gates every sending path, a way to review and withdraw, a versioned consent record, the privacy policy naming the provider, privacy-form answers derived from the same inventory, and an in-app way to report or flag AI output for Google Play. Cites that a policy mention alone is not sufficient.",
+      "files": [],
+      "must_include": [
+        "consent",
+        "inventory",
+        "privacy policy",
+        "withdraw",
+        "report"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "I have 5 Conductor workspaces free. How should I split the build of this new app across agents so they don't step on each other?",
+      "expected_output": "Keeps the foundation and the navigation shell serial with one agent, then fans out feature slices in parallel workspaces after the on-device sign-off. Names the hotspot files every slice edits (string dictionaries, route builders, query keys, API types) and recommends splitting them by feature first. One concern per workspace, a separate workspace for store-console questions, never merge a PR an active workspace is building on, and automatic workspace bootstrap for .env and dependencies.",
+      "files": [],
+      "must_include": [
+        "serial",
+        "one concern",
+        ".env",
+        "merge",
+        "split"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "use my account to test: kyaw@example.com / Sunrise#2026",
+      "expected_output": "Does not silently use the pasted password. Says plainly that it now sits in the chat transcript in plain text and should be changed, asks for a test account's login through .env.local / environment variables instead, and explains that automated runs write, so a personal account is look-only.",
+      "files": [],
+      "must_include": [
+        "transcript",
+        ".env",
+        "test account"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "I finished the habits feature. Typecheck and unit tests pass and it looks right on the iPhone simulator. Done?",
+      "expected_output": "Not done: typecheck and one simulator are rungs two and four of the verification ladder. Requires the device matrix — an Android phone and a tablet as separate targets — plus loading, empty, error and offline states, every language without clipping, both production bundle exports, a QA tour step, and a report that carries evidence and names what was not verified.",
+      "files": [],
+      "must_include": [
+        "Android",
+        "tablet",
+        "empty",
+        "offline",
+        "evidence"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "If I give an AI agent just the APIs and the design, can it build the whole mobile app in one go? What else would it need?",
+      "expected_output": "Answers honestly: the screens yes, the shipped app no. A design and an API are two of seven input packs; the other five are product decisions, identity and environment, platform scope and device matrix, store and legal and release, and the working agreement. Names what stays human (accounts and agreements, console actions, taste, risk acceptance, secrets, real-device checks, the reviewer) and sets the realistic target of one brief, three sign-offs and console work in parallel.",
+      "files": [],
+      "must_include": [
+        "seven",
+        "decision",
+        "console",
+        "test account",
+        "device"
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "What should the folder structure and layers be for our new Expo app? It has auth, a chat with streaming, subscriptions and two languages.",
+      "expected_output": "Describes the layered architecture with downward-only imports: a config module with static env reads, platform services, an API layer with one request function and one error type, server state with a user-scoped key factory, a session provider, gates (account, consent, plan, remote config) built in the foundation, a design system whose text and screen primitives carry script-aware typography and the tablet column, typed routes with deep links, and a dev QA harness. Ties each cross-cutting choice to the cost of retrofitting it.",
+      "files": [],
+      "must_include": [
+        "layer",
+        "gate",
+        "primitive",
+        "session",
+        "config"
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "We're starting a new Expo app next month — booking classes at a yoga studio, with payments and push. Which Expo SDK and library versions should we use? Last time we copied the versions from a tutorial.",
+      "expected_output": "Does not quote version numbers from memory or from the skill. Resolves 'latest' when the project starts: npm view expo dist-tags, create-expo-app@latest (or the skill's create-app.mjs, which runs it and applies the starter), every Expo/React Native library through npx expo install so versions follow the SDK, CLIs as npx <tool>@latest. Reads the SDK's changelog/upgrade notes and the AGENTS.md the template writes, records the versions in docs/PROJECT_BRIEF.md, upgrades the whole SDK later with expo install --fix rather than one package at a time, and pins a package back only with a dated reason.",
+      "files": [],
+      "must_include": [
+        "latest",
+        "expo install",
+        "changelog",
+        "brief"
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "Can you test the sign-in and checkout flows yourself on the iPhone simulator and the Android emulator? I'm tired of being the tester.",
+      "expected_output": "Says yes and how: Maestro flows on both platforms (installed with Homebrew, a JDK in JAVA_HOME), elements found by testID, each flow starting from a clean launch (clearState + clearKeychain), system prompts dismissed only when visible, release builds pointed at a mock or test backend (adb reverse on Android), dedicated devices nobody is signed into, and evidence (screenshots, pass/fail) in the report.",
+      "files": [],
+      "must_include": [
+        "Maestro",
+        "testID",
+        "clearState",
+        "release build",
+        "evidence"
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "Set up the foundation for our new Expo app — we have the design and the backend's OpenAPI file.",
+      "expected_output": "Runs the skill's create-app.mjs (create-expo-app@latest plus the core and only the modules the brief needs, versions resolved at that moment) or applies the starter to the existing fresh project, sets the identity and theme, generates the API types from the backend's OpenAPI file and runs the contract smoke script with --spec, keeps the gates, primitives and harness, replaces the example screens, and verifies the Phase 2 exit (each session state lands correctly on both platforms; Maestro flows pass on both).",
+      "files": [],
+      "must_include": [
+        "create-app",
+        "OpenAPI",
+        "types",
+        "smoke",
+        "Maestro"
+      ]
+    },
+    {
+      "id": 16,
+      "prompt": "Our next app is a simple recipe catalogue: public content only, no accounts, no AI features, English only, and two tabs (recipes and settings). Set up the foundation.",
+      "expected_output": "Runs the skill's create-app.mjs with only the modules this brief needs — tabs, and offline-cache if offline reading matters — and explicitly not auth, guest, ai-consent or streaming, because there are no accounts and no AI. Explains that the core already has the API client, offline banner, primitives, English strings and the Maestro harness, and that a module can be added later with add-module.mjs when the brief changes. Still proves the build on both platforms and records the versions create-app printed in the brief.",
+      "files": [],
+      "must_include": [
+        "create-app",
+        "tabs",
+        "add-module"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+# Opens Account from Home: the header button in a stack shell, the tab in a tab shell (tabs module).
+appId: ${APP_ID}
+---
+- runFlow:
+    when:
+      visible:
+        id: open-account
+    commands:
+      - tapOn:
+          id: open-account
+- runFlow:
+    when:
+      notVisible:
+        id: account-screen
+    commands:
+      - tapOn: "Account"
+- extendedWaitUntil:
+    visible:
+      id: account-screen
+    timeout: 10000

@@ -1,0 +1,16 @@
+{
+  "name": "tabs",
+  "title": "Native tab bar",
+  "summary": "Replaces the stack shell with the system tab bar (UITabBarController / Material bottom navigation) holding Home and Account; top-level screens stay in `src/screens/`, so a tab is a thin route file.",
+  "when": "The design has two or more top-level areas the user switches between.",
+  "requires": [],
+  "dependencies": [],
+  "plugins": [],
+  "remove": ["src/app/(app)/index.tsx", "src/app/(app)/account.tsx"],
+  "flows": [],
+  "screens": [],
+  "dataInventory": [],
+  "claudeRules": [
+    "Top-level screens live in `src/screens/`; tab routes in `src/app/(app)/(tabs)/` are one-line re-exports. Tab labels stay in the system font."
+  ]
+}

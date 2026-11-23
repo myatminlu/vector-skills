@@ -1,0 +1,36 @@
+appId: ${APP_ID}
+name: Ask about an item and watch the answer stream in (consent first, when the app asks for it)
+tags:
+  - smoke
+---
+- runFlow: subflows/fresh-launch.yaml
+# Asking may need an account: sign in when the app has a sign-in screen (as a guest it would be gated).
+- runFlow:
+    when:
+      visible:
+        id: sign-in-submit
+    file: subflows/sign-in.yaml
+- extendedWaitUntil:
+    visible: "Getting started"
+    timeout: 15000
+- tapOn: "Getting started"
+- tapOn:
+    id: item-ask
+- tapOn:
+    id: ask-input
+- inputText: "What is this?"
+- hideKeyboard
+- tapOn:
+    id: ask-send
+# With the ai-consent module the sheet must come before anything is sent (App Store 5.1.2(i)).
+- runFlow:
+    when:
+      visible:
+        id: consent-sheet
+    commands:
+      - tapOn:
+          id: consent-allow
+- extendedWaitUntil:
+    visible: ".*mock answer.*"
+    timeout: 20000
+- takeScreenshot: ask-answer

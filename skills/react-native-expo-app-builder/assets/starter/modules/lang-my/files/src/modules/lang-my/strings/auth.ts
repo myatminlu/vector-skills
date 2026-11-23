@@ -1,0 +1,22 @@
+/** Burmese for the auth module. Write it natively rather than word by word. */
+export const my: Record<string, string> = {
+  auth_title: 'ကြိုဆိုပါတယ်',
+  auth_subtitle: 'ဆက်လုပ်ဖို့ အကောင့်ဝင်ပါ',
+  auth_email: 'အီးမေးလ်',
+  auth_password: 'စကားဝှက်',
+  auth_sign_in: 'အကောင့်ဝင်မည်',
+  auth_email_required: 'အီးမေးလ် ထည့်ပါ။',
+  auth_password_required: 'စကားဝှက် ထည့်ပါ။',
+  err_sign_in: 'အီးမေးလ် သို့မဟုတ် စကားဝှက် မှားနေပါတယ်။',
+  home_saved: 'သိမ်းထားသည်များ',
+  item_save: 'သိမ်းမည်',
+  item_saved: 'သိမ်းထားပြီး',
+  saved_title: 'သိမ်းထားသည်များ',
+  saved_empty: 'သိမ်းထားတာ မရှိသေးပါ',
+  account_signed_in_as: '{email} ဖြင့် ဝင်ထားသည်',
+  account_sign_out: 'အကောင့်မှ ထွက်မည်',
+  account_delete: 'အကောင့် ဖျက်မည်',
+  account_delete_title: 'အကောင့်ကို ဖျက်မလား?',
+  account_delete_body: 'သင့်အကောင့်နဲ့ သိမ်းထားတာ အားလုံး အပြီးတိုင် ပျက်သွားပါမယ်။ ပြန်ယူလို့ မရပါ။',
+  account_delete_confirm: 'အပြီးဖျက်မည်',
+};

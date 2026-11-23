@@ -1,0 +1,16 @@
+{
+  "name": "lang-my",
+  "title": "Burmese (Myanmar) language",
+  "summary": "Burmese strings for the core and every module, Burmese digits, the language picker in Account, Noto Sans Myanmar and the 2.2× line-height rule for Myanmar text. Copy it as `lang-<code>` for another language with a tall script (Thai, Khmer…).",
+  "when": "The app ships in Burmese, or as the template for another tall-script language.",
+  "requires": [],
+  "dependencies": ["@expo-google-fonts/noto-sans-myanmar"],
+  "plugins": [],
+  "remove": [],
+  "flows": [],
+  "screens": [],
+  "dataInventory": [],
+  "claudeRules": [
+    "Every string exists in Burmese too (`src/modules/lang-my/strings/<module>.ts`; `npm test` fails otherwise). Write Burmese natively, not word by word. Myanmar text keeps lineHeight ≥ 2.2× its font size; inputs pick the Myanmar font from the placeholder as well as the value."
+  ]
+}

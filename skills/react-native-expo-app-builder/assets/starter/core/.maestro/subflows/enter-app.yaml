@@ -1,0 +1,24 @@
+# Gets past the sign-in screen when the app has one: as a guest when it can (guest module), otherwise signed in with
+# the QA account (auth module). Without either, the app already opens on Home.
+appId: ${APP_ID}
+---
+- runFlow:
+    when:
+      visible:
+        id: continue-as-guest
+    commands:
+      - tapOn:
+          id: continue-as-guest
+      - extendedWaitUntil:
+          visible:
+            id: home-list
+          timeout: 15000
+- runFlow:
+    when:
+      visible:
+        id: sign-in-submit
+    file: sign-in.yaml
+- extendedWaitUntil:
+    visible:
+      id: home-list
+    timeout: 15000

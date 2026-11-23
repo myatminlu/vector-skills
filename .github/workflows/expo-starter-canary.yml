@@ -1,0 +1,44 @@
+# Builds the react-native-expo-app-builder starter on whatever Expo SDK is `latest` this week — with no module, with
+# auth, and with every module — so a new SDK that breaks the core or a module is found within days, not by the next
+# person who starts an app. A scheduled failure emails the repository owner.
+name: Expo starter canary
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'skills/react-native-expo-app-builder/assets/**'
+      - 'skills/react-native-expo-app-builder/scripts/**'
+      - '.github/workflows/expo-starter-canary.yml'
+
+jobs:
+  starter:
+    name: starter (${{ matrix.modules }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        modules: [none, auth, all]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      # create-expo-app makes an initial commit in the new project.
+      - run: git config --global user.name "starter-canary" && git config --global user.email "starter-canary@users.noreply.github.com"
+      - name: Create the app on the latest Expo SDK (typecheck, lint and unit tests included)
+        run: node skills/react-native-expo-app-builder/scripts/create-app.mjs "$RUNNER_TEMP/app" --modules ${{ matrix.modules }} --verbose
+      - name: Production bundles for both platforms
+        working-directory: ${{ runner.temp }}/app
+        env:
+          EXPO_PUBLIC_API_URL: https://api.example.com
+        run: npx expo export --platform ios --platform android --output-dir "$RUNNER_TEMP/export"
+      - name: Contract smoke against the mock API
+        working-directory: ${{ runner.temp }}/app
+        run: |
+          node scripts/mock-api.mjs &
+          sleep 2
+          npm run api:smoke -- --spec docs/openapi.json

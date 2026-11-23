@@ -1,0 +1,16 @@
+{
+  "name": "remote-config",
+  "title": "Remote switches",
+  "summary": "`GET /app-config` flags read through `slots.useFlag(key, fallback)` with a documented fallback, cached for offline launches — hide a feature or a payment channel without a release.",
+  "when": "Anything the owner may need to switch off between releases: a feature under review, a payment channel per platform, a kill switch.",
+  "requires": [],
+  "dependencies": [],
+  "plugins": [],
+  "remove": [],
+  "flows": [],
+  "screens": [],
+  "dataInventory": [],
+  "claudeRules": [
+    "Feature switches are `slots.useFlag('key', fallback)`; only a real boolean from `GET /app-config` overrides the fallback. Document each key and its fallback where it is read."
+  ]
+}

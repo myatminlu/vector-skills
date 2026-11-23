@@ -1,0 +1,20 @@
+{
+  "name": "ai-consent",
+  "title": "Consent before a third-party AI",
+  "summary": "A versioned, per-account permission asked before anything is sent to a third-party AI (App Store 5.1.2(i)), single-flight so concurrent sends share one sheet, withdrawable in Account (5.1.1(ii)).",
+  "when": "Personal data — messages, photos, files — reaches an AI provider outside the app's own backend.",
+  "requires": ["auth"],
+  "dependencies": [],
+  "plugins": [],
+  "remove": [],
+  "flows": [],
+  "screens": [
+    "| — | AI consent | sheet | first send to the AI | — | allow / not now | — | account |"
+  ],
+  "dataInventory": [
+    "| What the user sends to the AI (questions, attachments) | each send, after consent | backend | `<AI provider>` | generate the answer | `<provider's retention>` | `<yes/no>` |"
+  ],
+  "claudeRules": [
+    "Every path that sends user content to the AI waits on `slots.withConsent(user.id, send)` first — the composer, retries, voice, suggested prompts. When what is sent changes, update `src/modules/ai-consent/disclosure.ts`, raise `CONSENT_VERSION`, and update the privacy policy and both stores' privacy forms."
+  ]
+}
