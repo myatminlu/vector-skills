@@ -1,0 +1,87 @@
+/** English strings. Every key must exist in every language — `i18n.test.ts` fails the build otherwise. */
+export const en = {
+  common_cancel: 'Cancel',
+  common_retry: 'Try again',
+  common_loading: 'Loading…',
+  common_offline: 'No internet connection',
+  common_close: 'Close',
+
+  err_generic: 'Something went wrong. Please try again.',
+  err_network: 'Could not reach the server. Check your connection and try again.',
+  err_timeout: 'That took too long. Please try again.',
+  err_session: 'Your session has ended. Please sign in again.',
+  err_login_required: 'You need to sign in to use this.',
+  err_forbidden: 'You are not allowed to do this.',
+  err_not_found: 'Not found.',
+  err_file_too_large: 'That file is too large.',
+  err_rate_limit: 'Too many requests. Wait a moment and try again.',
+  err_storage: "This phone's secure storage is not available.",
+  err_sign_in: 'The email or password is wrong.',
+  err_boundary_title: 'Something went wrong',
+  err_boundary_body: 'This screen could not be shown. Please try again.',
+
+  auth_title: 'Welcome',
+  auth_subtitle: 'Sign in to continue',
+  auth_email: 'Email',
+  auth_password: 'Password',
+  auth_sign_in: 'Sign in',
+  auth_continue_guest: 'Continue without an account',
+  auth_guest_hint: 'You can look around without an account. Saving and asking questions need one.',
+  auth_email_required: 'Enter your email.',
+  auth_password_required: 'Enter your password.',
+
+  tab_home: 'Home',
+  tab_account: 'Account',
+
+  home_title: 'Home',
+  home_empty: 'Nothing here yet',
+  home_saved: 'Saved',
+
+  item_save: 'Save',
+  item_saved: 'Saved',
+  item_ask: 'Ask about this',
+
+  ask_title: 'Ask',
+  ask_placeholder: 'Write your question…',
+  ask_send: 'Send',
+  ask_thinking: 'Thinking…',
+  ask_disabled: 'Asking is switched off for now.',
+
+  saved_title: 'Saved',
+  saved_empty: 'You have not saved anything yet',
+
+  login_title: 'Sign in to continue',
+  login_body_saved: 'Sign in to keep what you save on every phone you use.',
+  login_body_ask: 'Sign in to ask questions.',
+  login_body_account: 'Sign in to manage your account.',
+  login_action: 'Sign in',
+
+  consent_title: 'Share your question with {provider}?',
+  consent_body: 'To answer, we send {provider} your question and the item you are asking about. We do not send your name or email. You can turn this off at any time in Account.',
+  consent_allow: 'Allow',
+  consent_deny: 'Not now',
+
+  account_title: 'Account',
+  account_guest_title: 'You are not signed in',
+  account_guest_body: 'Sign in to save items and ask questions.',
+  account_signed_in_as: 'Signed in as {email}',
+  account_language: 'Language',
+  account_text_size: 'Text size',
+  account_ai_sharing: 'Sharing with {provider}',
+  account_ai_on: 'Allowed',
+  account_ai_off: 'Off',
+  account_ai_withdraw: 'Turn off',
+  account_privacy: 'Privacy policy',
+  account_terms: 'Terms of use',
+  account_sign_out: 'Sign out',
+  account_delete: 'Delete account',
+  account_delete_title: 'Delete your account?',
+  account_delete_body: 'Your account and everything you saved will be deleted for good. This cannot be undone.',
+  account_delete_confirm: 'Delete for good',
+  account_version: 'Version {version}',
+
+  notfound_title: 'This screen does not exist',
+  notfound_home: 'Go home',
+} as const;
+
+export type MessageKey = keyof typeof en;

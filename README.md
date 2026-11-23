@@ -1,21 +1,73 @@
 # vector-skills
 
-A personal library of [Claude Code](https://claude.com/claude-code) skills. Each skill
-teaches the agent a domain — how to think, what rules to follow, what mistakes to avoid —
-when working on that kind of code.
+Agent skills for [Claude Code](https://claude.com/claude-code) and other coding agents that read
+`SKILL.md` skills: a **React Native / Expo mobile app builder**, **App Store and Google Play submission
+and rejection handling**, **NestJS backend guidelines**, and engineering workflows for implementing,
+debugging, reviewing and refactoring code. Each skill teaches the agent a domain — how to think, what
+rules to follow, what mistakes to avoid — distilled from shipping real products, so you don't have to
+re-explain it every session.
+
+```bash
+npx skills add myatminlu/vector-skills                                      # all skills
+npx skills add myatminlu/vector-skills --skill react-native-expo-app-builder  # just one
+```
 
 ## Skills in this collection
+
+### Mobile apps — React Native and Expo
+
+| Skill | What it does |
+|---|---|
+| [`react-native-expo-app-builder`](./skills/react-native-expo-app-builder/) | Build a production-ready React Native app with Expo for iOS and Android from a design (Figma, screenshots) and an API (OpenAPI or docs). One command creates the project on the **latest Expo SDK** and adds a tested starter: API client with single-flight token refresh, SSE streaming and native uploads, guest mode, AI-consent gate, remote flags, i18n with tall-script typography, tablet layout, offline banner, mock API, OpenAPI type generation, contract smoke test, and **Maestro end-to-end tests** on the iOS simulator and Android emulator. Plus the process around it: one-message intake of the decisions a design and an API never contain, layered architecture and folder structure, build order, parallel agent workspaces, verification and hardening matrix. SKILL.md + 9 reference files + `scripts/create-app.mjs` + starter + evals. |
+| [`app-store-play-store-submission`](./skills/app-store-play-store-submission/) | Get an Expo / React Native app approved on the **Apple App Store and Google Play**, and fix **App Store or Google Play rejections** in one turn. Pre-submission audit (App Review Guidelines, App Privacy and Data safety, account deletion, guest access, third-party AI consent, subscriptions, screenshots), version and build numbers, signing, release builds (AAB, iOS archive), a launch test on the newest iOS, TestFlight, hand-over, rejection protocol with reviewer reply templates, and post-launch notices and deadlines. SKILL.md + 4 reference files + release scripts + evals. |
+
+### Backend — NestJS
 
 | Skill | What it does |
 |---|---|
 | [`nestjs-dev-guidelines`](./skills/nestjs-dev-guidelines/) | Senior NestJS / Node.js backend engineer: execution discipline, folder structure, naming, module design, code quality, decision trees, API design, standard responses, pagination/filters/sorting, validation, error handling, exception filters, security, auth/RBAC, multi-tenancy, DB design + ORM patterns, migrations, cascade rules, pipes/interceptors/guards, events, background jobs, configuration, logging, observability/tracing, testing, performance, N+1 elimination, caching, Swagger docs, AI product patterns (LLM gateway, SSE streaming, usage metering & cost), code review checklist + anti-patterns, modern Nest stack, health/readiness/shutdown, source-of-truth freshness checks, webhooks, file uploads, decorators/scopes/dynamic modules, DDD layered/hexagonal architecture (ports/adapters/use cases). SKILL.md + 43 granular reference files + evals. |
+
+### Engineering workflow
+
+| Skill | What it does |
+|---|---|
 | [`code-implementation`](./skills/code-implementation/) | Architect-grade workflow for changing code in an existing codebase — features, fixes, refactors, integrations, migrations. Read the real code before writing any, trace the root cause instead of patching symptoms, reuse what exists instead of adding near-duplicates, verify end to end. SKILL.md + 5 reference files (investigation, root-cause, design-review, code-quality, verification) + evals. |
 | [`bug-fixing`](./skills/bug-fixing/) | Disciplined defect workflow — reproduce, read the real code, find the true root cause, design the minimal correct fix at the right layer, verify it, then hunt for clones of the same defect. Covers crashes, wrong output, flaky tests, regressions, races, leaks, perf degradation, works-locally-not-in-prod. SKILL.md + 3 reference files (root-cause techniques, anti-patterns, report templates) + evals. |
 | [`code-quality-check`](./skills/code-quality-check/) | Read-only, evidence-backed quality review producing severity-ranked findings, a scorecard, and a merge/ship verdict. For PR/diff review, pre-merge gates, and second opinions on agent- or teammate-written code. Hands off to the implementation workflow rather than writing the fix. SKILL.md + 6 reference files + `scripts/repo_signals.py` + evals. |
 | [`project-structure-refactoring`](./skills/project-structure-refactoring/) | Cross-language project structure and structural refactoring: screaming-architecture / feature-first layout principles, safe staged restructuring (inventory → mapping table → approval gate → green stages), git mv history preservation, god-file splitting (symbol-level mapping, shrinking facades, extraction order), silent-breaker census (CI path filters, CODEOWNERS, Dockerfiles, dotted-path strings), and per-stack reference layouts for JS/TS (Node, React, Next.js, Expo), Python (src layout, FastAPI, Django), Go (cmd/internal), and monorepos (apps/packages, workspaces). Structural only — hands code-level refactoring to `code-implementation`. SKILL.md + 7 reference files + evals. |
 | [`codebase-audit`](./skills/codebase-audit/) | Forensic whole-codebase audit and staged refactor plan — maps the system, verifies features are actually wired end to end, finds duplicated services and copy-pasted modules, band-aid fixes, dead code, and legacy-vs-new implementations living side by side. Emits a numbered report set. SKILL.md + 4 reference files + evals. |
 
-(More skills planned — `react-frontend-guidelines`, `expo-mobile-guidelines`, etc.)
+(More skills planned — `react-frontend-guidelines`, etc.)
+
+## Build a React Native app with an AI agent — FAQ
+
+**How do I build a React Native app with Claude Code or another coding agent?**
+Install `react-native-expo-app-builder`, give the agent your design (a Figma export or screenshots) and your API (an
+OpenAPI file or docs), and ask it to build the app. It reads everything, sends back one short message with the few
+decisions that are expensive to reverse (each with a recommendation), creates the project with
+`create-expo-app@latest`, adds the tested starter, verifies your API with a smoke script, and builds feature slices
+that it tests itself on both platforms.
+
+**Which Expo SDK and library versions does it use?**
+Whatever is `latest` on the day it runs. The skill pins no versions: `create-expo-app@latest`, `npx expo install` for
+every library (so versions match the SDK), CLIs as `npx <tool>@latest`, and the versions it ended up with are written
+into the project brief.
+
+**Can the agent test the app by itself instead of me?**
+Yes. Maestro taps through the iOS simulator and the Android emulator against release builds and a local mock API; a QA
+tour screenshots every route; a hardening matrix covers tablets, the keyboard on Android, the largest text size,
+offline, token expiry, deep links and permissions. "Done" means seen running on every target, with evidence.
+
+**How do I fix an App Store or Google Play rejection with an AI agent?**
+Paste the reviewer's whole message. `app-store-play-store-submission` runs a rejection protocol: the cause in the app
+and in the process, the same problem found everywhere else, the fix with evidence, a reply for the reviewer, and a new
+audit check so it does not happen again.
+
+**Where do the rules come from?**
+From shipping one Expo app — AI chat, subscriptions, two languages, phone and tablet — through four App Store
+rejections: 165 prompts and 21 PRs, each prompt labelled by what the human was doing. The skills move that work
+forward (store tasks on day one, verification before features, policies as gates), aiming at ten to twenty prompts
+for the next app.
 
 ## Install
 
@@ -28,7 +80,7 @@ npx skills add myatminlu/vector-skills
 Or manually — skills live in `~/.claude/skills/` so Claude Code auto-discovers them:
 
 ```bash
-git clone <repo-url> <local-path>/vector-skills
+git clone https://github.com/myatminlu/vector-skills.git <local-path>/vector-skills
 ln -s <local-path>/vector-skills/skills/nestjs-dev-guidelines \
       ~/.claude/skills/nestjs-dev-guidelines
 ```

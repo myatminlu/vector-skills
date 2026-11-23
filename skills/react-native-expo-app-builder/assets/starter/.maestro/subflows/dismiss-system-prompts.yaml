@@ -1,0 +1,14 @@
+# System sheets that cover the app after a login form: iOS "Save Password?" (Password AutoFill) and Android's
+# password-manager / Google "Save password" prompt. Dismiss them only when they are actually showing.
+appId: ${APP_ID}
+---
+- runFlow:
+    when:
+      visible: "Save Password?"
+    commands:
+      - tapOn: "Not Now"
+- runFlow:
+    when:
+      visible: "Save password.*"
+    commands:
+      - tapOn: "Not now|Never|No thanks"

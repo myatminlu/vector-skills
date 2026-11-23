@@ -1,0 +1,9 @@
+# Keeps the GitHub Actions in .github/workflows on their current major versions.
+# npm is deliberately not here: Expo and React Native packages move together with the SDK — upgrade them with
+# `npx expo install expo@latest && npx expo install --fix`, never one package at a time.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

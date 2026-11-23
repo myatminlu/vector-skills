@@ -1,0 +1,87 @@
+import type { MessageKey } from './en';
+
+/** Burmese (မြန်မာ) strings. Write them natively rather than translating word by word. */
+export const my: Record<MessageKey, string> = {
+  common_cancel: 'မလုပ်တော့ပါ',
+  common_retry: 'ပြန်ကြိုးစားမည်',
+  common_loading: 'ဖွင့်နေပါသည်…',
+  common_offline: 'အင်တာနက် ချိတ်ဆက်မှု မရှိပါ',
+  common_close: 'ပိတ်မည်',
+
+  err_generic: 'တစ်ခုခု မှားယွင်းသွားပါတယ်။ ပြန်ကြိုးစားကြည့်ပါ။',
+  err_network: 'ဆာဗာနဲ့ ချိတ်ဆက်လို့ မရပါ။ အင်တာနက်ကို စစ်ပြီး ပြန်ကြိုးစားပါ။',
+  err_timeout: 'အချိန် ကြာလွန်းသွားပါတယ်။ ပြန်ကြိုးစားပါ။',
+  err_session: 'အကောင့်ဝင်ထားမှု ကုန်ဆုံးသွားပါပြီ။ ပြန်ဝင်ပါ။',
+  err_login_required: 'ဒါကို သုံးဖို့ အကောင့်ဝင်ဖို့ လိုပါတယ်။',
+  err_forbidden: 'ဒါကို လုပ်ခွင့် မရှိပါ။',
+  err_not_found: 'ရှာမတွေ့ပါ။',
+  err_file_too_large: 'ဖိုင် အရွယ်အစား ကြီးလွန်းပါတယ်။',
+  err_rate_limit: 'တောင်းဆိုမှု များလွန်းနေပါတယ်။ ခဏစောင့်ပြီး ပြန်ကြိုးစားပါ။',
+  err_storage: 'ဖုန်းရဲ့ လုံခြုံသော သိုလှောင်ရာကို သုံးလို့ မရပါ။',
+  err_sign_in: 'အီးမေးလ် သို့မဟုတ် စကားဝှက် မှားနေပါတယ်။',
+  err_boundary_title: 'တစ်ခုခု မှားသွားပါတယ်',
+  err_boundary_body: 'ဒီစာမျက်နှာကို ပြလို့ မရပါ။ ပြန်ကြိုးစားကြည့်ပါ။',
+
+  auth_title: 'ကြိုဆိုပါတယ်',
+  auth_subtitle: 'ဆက်လုပ်ဖို့ အကောင့်ဝင်ပါ',
+  auth_email: 'အီးမေးလ်',
+  auth_password: 'စကားဝှက်',
+  auth_sign_in: 'အကောင့်ဝင်မည်',
+  auth_continue_guest: 'အကောင့်မဝင်ဘဲ ဆက်သွားမည်',
+  auth_guest_hint: 'အကောင့်မဝင်ဘဲ ကြည့်ရှုနိုင်ပါတယ်။ သိမ်းဆည်းတာနဲ့ မေးခွန်းမေးတာအတွက်တော့ အကောင့်ဝင်ဖို့ လိုပါတယ်။',
+  auth_email_required: 'အီးမေးလ် ထည့်ပါ။',
+  auth_password_required: 'စကားဝှက် ထည့်ပါ။',
+
+  tab_home: 'ပင်မ',
+  tab_account: 'အကောင့်',
+
+  home_title: 'ပင်မ',
+  home_empty: 'ပြစရာ မရှိသေးပါ',
+  home_saved: 'သိမ်းထားသည်များ',
+
+  item_save: 'သိမ်းမည်',
+  item_saved: 'သိမ်းထားပြီး',
+  item_ask: 'ဒီအကြောင်း မေးမည်',
+
+  ask_title: 'မေးမြန်းရန်',
+  ask_placeholder: 'မေးခွန်း ရေးပါ…',
+  ask_send: 'ပို့မည်',
+  ask_thinking: 'စဉ်းစားနေပါတယ်…',
+  ask_disabled: 'မေးခွန်းမေးခြင်းကို ယာယီ ပိတ်ထားပါတယ်။',
+
+  saved_title: 'သိမ်းထားသည်များ',
+  saved_empty: 'သိမ်းထားတာ မရှိသေးပါ',
+
+  login_title: 'ဆက်လုပ်ဖို့ အကောင့်ဝင်ပါ',
+  login_body_saved: 'သိမ်းထားတာတွေကို ဖုန်းတိုင်းမှာ ပြန်ကြည့်နိုင်ဖို့ အကောင့်ဝင်ပါ။',
+  login_body_ask: 'မေးခွန်းမေးဖို့ အကောင့်ဝင်ပါ။',
+  login_body_account: 'အကောင့်ကို စီမံဖို့ အကောင့်ဝင်ပါ။',
+  login_action: 'အကောင့်ဝင်မည်',
+
+  consent_title: 'သင့်မေးခွန်းကို {provider} ဆီ ပို့ခွင့်ပြုမလား?',
+  consent_body: 'အဖြေထုတ်ဖို့ သင့်မေးခွန်းနဲ့ မေးနေတဲ့ အကြောင်းအရာကို {provider} ဆီ ပို့ပါမယ်။ သင့်အမည်နဲ့ အီးမေးလ်ကို မပို့ပါ။ အကောင့် စာမျက်နှာမှာ အချိန်မရွေး ပြန်ပိတ်နိုင်ပါတယ်။',
+  consent_allow: 'ခွင့်ပြုမည်',
+  consent_deny: 'ယခု မလုပ်သေးပါ',
+
+  account_title: 'အကောင့်',
+  account_guest_title: 'အကောင့် မဝင်ရသေးပါ',
+  account_guest_body: 'သိမ်းဆည်းဖို့နဲ့ မေးခွန်းမေးဖို့ အကောင့်ဝင်ပါ။',
+  account_signed_in_as: '{email} ဖြင့် ဝင်ထားသည်',
+  account_language: 'ဘာသာစကား',
+  account_text_size: 'စာလုံး အရွယ်အစား',
+  account_ai_sharing: '{provider} ဆီ ပို့ခြင်း',
+  account_ai_on: 'ခွင့်ပြုထား',
+  account_ai_off: 'ပိတ်ထား',
+  account_ai_withdraw: 'ပိတ်မည်',
+  account_privacy: 'ကိုယ်ရေးအချက်အလက် မူဝါဒ',
+  account_terms: 'အသုံးပြုမှု စည်းမျဉ်း',
+  account_sign_out: 'အကောင့်မှ ထွက်မည်',
+  account_delete: 'အကောင့် ဖျက်မည်',
+  account_delete_title: 'အကောင့်ကို ဖျက်မလား?',
+  account_delete_body: 'သင့်အကောင့်နဲ့ သိမ်းထားတာ အားလုံး အပြီးတိုင် ပျက်သွားပါမယ်။ ပြန်ယူလို့ မရပါ။',
+  account_delete_confirm: 'အပြီးဖျက်မည်',
+  account_version: 'ဗားရှင်း {version}',
+
+  notfound_title: 'ဒီစာမျက်နှာ မရှိပါ',
+  notfound_home: 'ပင်မသို့',
+};

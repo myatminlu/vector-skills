@@ -1,0 +1,10 @@
+# A clean start: no session, no guest flag, no cached data.
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+- extendedWaitUntil:
+    visible:
+      id: sign-in-screen
+    timeout: 20000

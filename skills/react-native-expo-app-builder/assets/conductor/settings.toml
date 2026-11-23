@@ -1,0 +1,30 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+# Save as <repo>/.conductor/settings.toml. The Mac app reads this file from the DEFAULT BRANCH ON THE
+# REMOTE, so it only takes effect once it is merged.
+
+# Git-ignored files every new workspace needs. This list REPLACES Conductor's built-in `.env*` default,
+# so `.env*` is listed explicitly. Conductor copies from the repository's root directory — that copy is
+# the source of truth, so keep it in step with .env.example. A workspace that starts without it does
+# not fail: it just behaves differently (provider buttons hidden, an empty paywall), which looks like a
+# bug in the app rather than a missing file.
+file_include_globs = """
+.env*
+"""
+
+[scripts]
+# Runs once when a workspace is created, from the workspace directory, in a non-interactive shell.
+setup = "sh .conductor/setup.sh"
+# Each local workspace gets its own ports (CONDUCTOR_PORT … CONDUCTOR_PORT+9), so dev servers can run
+# side by side.
+run_mode = "concurrent"
+
+[scripts.run.dev]
+available_in = [ "local" ]
+command = "npx expo start --dev-client --port $CONDUCTOR_PORT"
+default = true
+icon = "play"
+
+[scripts.run.check]
+command = "npm run typecheck && npm run lint && npm test"
+icon = "test-tube"

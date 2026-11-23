@@ -1,0 +1,82 @@
+{
+  "skill_name": "app-store-play-store-submission",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "what is this? \"Guideline 5.1.1(v) - Legal - Privacy - Data Collection and Storage. The app requires users to register or log in to access features that are not account based. Specifically, the app requires users to register before accessing AI feature. Next Steps: Revise the app to let users freely access the app's features that are not account based.\"",
+      "expected_output": "Answers in the rejection-protocol shape, not just an explanation: what the rule means, the cause in the app (login wall), options with a clear recommendation (guests get real use of the named feature; a guest state plus an account gate; account deletion check), the same class to sweep, a draft reviewer reply, and asks for the full message if this was an excerpt.",
+      "files": [],
+      "must_include": [
+        "guest",
+        "recommend",
+        "reply",
+        "same class",
+        "full"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The app is done. Build it for the App Store and Play Store.",
+      "expected_output": "Does not start building. Runs the submission audit first, proposes version and build numbers and waits for approval, requires PR and merge before building from the default branch, regenerates native projects for production, verifies the artifacts (signer, version, env values inlined, background modes), launch-tests the release build on the newest OS on phone and tablet, and hands over absolute paths plus the human's remaining steps.",
+      "files": [],
+      "must_include": [
+        "audit",
+        "approv",
+        "merge",
+        "launch",
+        "newest",
+        "tablet"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Apple says: Guideline 2.5.4 - Performance - Software Requirements. Your app declares support for audio in the UIBackgroundModes key in your Info.plist but we were unable to play any audible content that runs in the background. We use expo-audio only for recording voice notes.",
+      "expected_output": "Identifies the cause as a library default (the audio plugin enables background playback, adding the UIBackgroundModes audio entry and an Android foreground-service permission), fixes it in app config rather than the generated plist, verifies by printing UIBackgroundModes from the generated Info.plist after prebuild, sweeps every declared background mode, permission and service on both platforms, and drafts the reply.",
+      "files": [],
+      "must_include": [
+        "UIBackgroundModes",
+        "plugin",
+        "Info.plist",
+        "reply",
+        "permission"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Our chat sends user messages and photos to Gemini through our backend. Is there anything we need for the stores before submitting?",
+      "expected_output": "Yes: an AI data inventory traced from the backend, an in-app consent step before the first send gating every sending path, review/withdraw in settings, a versioned consent record, the privacy policy naming the provider, privacy-form answers from the same inventory, and an in-app report/flag action for AI output on Google Play. Notes that a policy mention alone is not sufficient.",
+      "files": [],
+      "must_include": [
+        "consent",
+        "inventory",
+        "privacy policy",
+        "withdraw",
+        "report"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Play Console shows: 'DEX code optimization is below our threshold — Obfuscation (1%) — Fix by <date>'. Do I need to fix this before uploading the next version?",
+      "expected_output": "Explains it does not block the next upload but has a real deadline; the cause is code shrinking (R8) being off in the release build; the fix is a config change shipped as its own tested release, checking every reflective library in a release build; separates it from noise notices like deprecated edge-to-edge APIs in library code.",
+      "files": [],
+      "must_include": [
+        "R8",
+        "deadline",
+        "release build",
+        "test"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "App Review rejected us: Guideline 2.3.10 - Accurate Metadata. Revise the app's screenshots to remove non-iOS status bar images.",
+      "expected_output": "Identifies screenshots made from Android captures; recapture on iOS simulators with a clean status bar override and compose them with a template at the store's sizes; check every size and the iPad set; reply text; adds screenshot provenance to the audit.",
+      "files": [],
+      "must_include": [
+        "simulator",
+        "status bar",
+        "iPad",
+        "reply"
+      ]
+    }
+  ]
+}
