@@ -11,6 +11,10 @@
         "NaN",
         "validat",
         "repo context"
+      ],
+      "must_not_include": [
+        "looks good to merge",
+        "ship it as-is"
       ]
     },
     {
@@ -47,6 +51,10 @@
         "hand off",
         "findings",
         "implement"
+      ],
+      "must_not_include": [
+        "i edited the files",
+        "committed the fixes"
       ]
     },
     {

@@ -1,7 +1,8 @@
 # <App name> — instructions for agents
 
 <!--
-Save as CLAUDE.md (or AGENTS.md) at the repository root. Keep it short: it is read at the start of every
+Save as AGENTS.md at the repository root (and put `@AGENTS.md` in CLAUDE.md so Claude Code, Cursor, Codex,
+Antigravity, Copilot, and OpenCode all load the same standing rules). Keep it short: it is read at the start of every
 session in every clone and worktree. Facts and decisions live in docs/PROJECT_BRIEF.md; this file holds
 the standing rules. Replace every <placeholder>, delete what does not apply.
 -->

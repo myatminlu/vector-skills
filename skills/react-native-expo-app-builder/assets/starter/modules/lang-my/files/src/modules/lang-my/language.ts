@@ -18,3 +18,5 @@ export const burmese: Omit<ExtraLanguage, 'strings'> = {
   // Counts use Burmese digits. Prices and codes usually should not — decide per design.
   formatCount: (value) => toBurmeseDigits(new Intl.NumberFormat('en-US').format(value)),
 };
+
+export const language = burmese;

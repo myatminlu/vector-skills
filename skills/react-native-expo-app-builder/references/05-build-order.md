@@ -29,7 +29,7 @@ Phase 2 has been built once already, from the case-study app's foundation, and s
 **Choose the modules in Phase 0**, from the brief: accounts → `auth`; any public content → `guest`; personal data to
 a third-party AI → `ai-consent`; an AI chat or live feed → `streaming`; file pickers → `uploads`; anything to switch
 off between releases → `remote-config`; reading offline → `offline-cache`; small type or older users → `text-size`;
-Burmese (or another tall script, by copying it) → `lang-my`; two or more top-level areas → `tabs`. Required modules come
+Burmese (or any custom language by copying it as `lang-<code>` and adding `"language"` in `module.json`) → `lang-my`; two or more top-level areas → `tabs`. Required modules come
 along (guest and ai-consent need auth). `node scripts/create-app.mjs --list` prints the catalog with a "when" per module.
 
 ```bash
@@ -44,10 +44,10 @@ What `create-app.mjs` does (it stops with a clear message at the first failure; 
 2. Removes the template's example code and unused images; copies the core and the chosen modules; adds
    `docs/PROJECT_BRIEF.md` and `docs/HUMAN_TASKS.md` (and `.conductor/` with `--conductor`).
 3. Writes `modules.json` and generates from it `src/modules/index.ts` (registers the modules), `src/modules/strings.ts`
-   (their strings and languages), `.maestro/config.yaml`, and the module sections of `docs/SCREENS.md`,
-   `docs/DATA_INVENTORY.md`, `CLAUDE.md` and `README.md`; merges each module's endpoints into `docs/openapi.json`.
+   (their strings and extra `lang-*` languages), `.maestro/config.yaml`, and the module sections of `docs/SCREENS.md`,
+   `docs/DATA_INVENTORY.md`, `AGENTS.md`, `CLAUDE.md` (`@AGENTS.md`) and `README.md`; merges each module's endpoints into `docs/openapi.json`.
 4. Patches `app.json` (name, slug, scheme, bundle id, build numbers, tablet support, config plugins, `extra.legal`),
-   `tsconfig.json`, `.gitignore` and the package scripts; creates `.env`; points each GitHub Action at its current major.
+   `tsconfig.json`, `.gitignore` and the package scripts (including cross-platform `scripts/api-types.mjs`); creates `.env`; points each GitHub Action at its current major.
 5. `npx expo install` for the core's and the modules' libraries (versions follow the SDK); lint tooling the same way;
    `tsx` and `@types/node` at their latest release; generates the API types.
 6. Runs the unit tests, typecheck and lint, and prints the versions it ended up with — record them in the brief.
@@ -88,7 +88,7 @@ the starter compile. If the fix is general, it belongs in this skill's `assets/s
 
 | Phase | Produces | Exit test | The human |
 |---|---|---|---|
-| 0 Intake | Brief, screen inventory, API requests, human-task list, `CLAUDE.md`, one short kickoff message | Expensive decisions answered or defaulted; blocking items in hand | **Checkpoint 1** |
+| 0 Intake | Brief, screen inventory, API requests, human-task list, `AGENTS.md` / `CLAUDE.md`, one short kickoff message | Expensive decisions answered or defaulted; blocking items in hand | **Checkpoint 1** |
 | 1 Contract and toolchain | Smoke script, gap report, an empty app on every target, one release build | Shapes verified for the first slices; the release build launches | Answers the gaps |
 | 2 Foundation | Layers, gates, harness, CI, bootstrap | Signed-out, guest and signed-in each land correctly on both platforms; the tour photographs every route | — |
 | 3 Walking skeleton | Sign-in → shell → core flow on the real API | Contact sheet approved | **Checkpoint 2** |
@@ -169,11 +169,11 @@ Rules:
 A new worktree starts without dependencies and without git-ignored files. If that is not automatic, the first symptom is a mysterious UI difference rather than an error — on the case-study project, sign-in buttons that looked deleted.
 
 - **`.env.example` lists every key** the config module reads, with public values filled in.
-- The real `.env` lives in the repository's root directory (git-ignored) and is **copied into every new workspace** by the tool's files-to-copy setting. Pin that setting in the repo (`assets/conductor/settings.toml`) so a changed default cannot silently drop it.
+- The real `.env` lives in the repository's root directory (git-ignored). With **`git worktree`** (`git worktree add ../feat-slice -b feat/slice`), copy `.env` into the new worktree (`cp .env ../feat-slice/.env && cd ../feat-slice && npm ci`); with Conductor (`--conductor`), pin `file_include_globs` in `assets/conductor/settings.toml` so `.env*` is copied automatically.
 - A **setup script** installs dependencies and **fails loudly** when `.env` is missing or lacks a key that `.env.example` has (`assets/conductor/setup.sh`).
-- `CLAUDE.md` records which commands need the tool sandbox off or network access, which ports dev servers may use, and which simulators are the human's.
+- `AGENTS.md` (`CLAUDE.md` imports `@AGENTS.md`) records which commands need the tool sandbox off or network access, which ports dev servers may use, and which simulators are the human's.
 
-Conductor specifics, as documented when this was written — check them against the current docs:
+Optional Conductor specifics (`--conductor`), as documented when this was written — check them against the current docs:
 
 - Files to copy are resolved in this order: a `.worktreeinclude` file at the repository root, then `file_include_globs` in the repository settings, then the built-in `.env*` default. A `file_include_globs` list **replaces** the default, so list `.env*` in it.
 - The Mac app reads the shared `.conductor/settings.toml` from the **default branch on the remote**: a change does nothing until it is merged.

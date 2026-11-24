@@ -1,0 +1,34 @@
+{
+  "name": "vector-skills",
+  "displayName": "Vector Skills",
+  "version": "1.0.0",
+  "description": "Production-grade agent skills for Expo/React Native app building, App Store & Google Play submission, NestJS backends, and senior engineering workflows.",
+  "category": "Developer Tools",
+  "author": {
+    "name": "Myat Min Lu",
+    "email": "myatminlu@myvectorai.com",
+    "url": "https://github.com/myatminlu"
+  },
+  "homepage": "https://github.com/myatminlu/vector-skills",
+  "repository": "https://github.com/myatminlu/vector-skills",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "expo",
+    "react-native",
+    "nestjs",
+    "app-store",
+    "google-play",
+    "code-review",
+    "refactoring",
+    "debugging"
+  ],
+  "suggestedPrompts": [
+    "Build a new Expo app from this design export and OpenAPI spec.",
+    "Review this NestJS PR for blockers, N+1 queries, and contract issues.",
+    "Run a read-only code quality check on this module and rank findings by severity."
+  ],
+  "skills": [
+    "./skills"
+  ]
+}

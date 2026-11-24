@@ -3,7 +3,7 @@
  * Creates a new Expo app on whatever SDK is `latest` today: the starter's core, plus only the modules the app needs.
  *
  *   node <skill>/scripts/create-app.mjs <app-dir> [--modules auth,guest,ai-consent] [--name "My App"]
- *                                       [--bundle-id com.acme.myapp] [--existing] [--conductor]
+ *                                       [--bundle-id com.acme.myapp] [--existing] [--force] [--conductor]
  *                                       [--skip-install] [--skip-check] [--verbose]
  *   node <skill>/scripts/create-app.mjs --list            # the modules and when each is worth it
  *
@@ -12,6 +12,7 @@
  *   --bundle-id     iOS bundle identifier and Android application id. Default: com.example.<slug>, which store builds
  *                   refuse on purpose — the real one is fixed forever by the first store upload.
  *   --existing      Apply to <app-dir>, a fresh `create-expo-app` project, instead of creating one.
+ *   --force         Overwrite an already-applied starter in <app-dir> (when combined with --existing).
  *   --conductor     Also write .conductor/settings.toml and setup.sh (Conductor workspace bootstrap).
  *   --skip-install  Copy and patch files only (no installs, no type generation, no checks).
  *   --skip-check    Do not run typecheck, lint and unit tests at the end.
@@ -25,16 +26,17 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { parseArgs } from 'node:util';
 
 import {
   addPlugins,
   bumpActions,
-  catalog,
   copyModuleFiles,
   CORE_DEPENDENCIES,
   CORE_PLUGINS,
   coreDir,
   createRunner,
+  ensureAgentInstructions,
   ensureGitignore,
   expoInstall,
   installTooling,
@@ -51,35 +53,62 @@ import {
   writeGenerated,
 } from './lib/starter.mjs';
 
-const argv = process.argv.slice(2);
-const flag = (name) => argv.includes(name);
-const option = (name) => {
-  const index = argv.indexOf(name);
-  return index === -1 ? undefined : argv[index + 1];
-};
-if (flag('--list')) {
+const USAGE =
+  'Usage: node create-app.mjs <app-dir> [--modules a,b] [--name "My App"] [--bundle-id com.acme.myapp] [--existing] [--force] [--conductor] [--skip-install] [--skip-check] [--verbose]\n       node create-app.mjs --list';
+
+let parsed;
+try {
+  parsed = parseArgs({
+    args: process.argv.slice(2),
+    options: {
+      list: { type: 'boolean', default: false },
+      help: { type: 'boolean', short: 'h', default: false },
+      modules: { type: 'string' },
+      name: { type: 'string' },
+      'bundle-id': { type: 'string' },
+      existing: { type: 'boolean', default: false },
+      force: { type: 'boolean', default: false },
+      conductor: { type: 'boolean', default: false },
+      'skip-install': { type: 'boolean', default: false },
+      'skip-check': { type: 'boolean', default: false },
+      verbose: { type: 'boolean', default: false },
+    },
+    allowPositionals: true,
+    strict: true,
+  });
+} catch (error) {
+  console.error(`${error.message}\n${USAGE}`);
+  process.exit(2);
+}
+
+const { values: opts, positionals } = parsed;
+if (opts.help) {
+  console.log(USAGE);
+  process.exit(0);
+}
+if (opts.list) {
   printCatalog();
   process.exit(0);
 }
-const valued = ['--name', '--bundle-id', '--modules'];
-const target = argv.filter((arg, index) => !arg.startsWith('--') && !valued.includes(argv[index - 1]))[0];
-if (!target) {
-  console.error('Usage: node create-app.mjs <app-dir> [--modules a,b] [--name "My App"] [--bundle-id com.acme.myapp] [--existing] [--conductor] [--skip-install] [--skip-check] [--verbose]\n       node create-app.mjs --list');
+const target = positionals[0];
+if (!target || positionals.length > 1) {
+  console.error(USAGE);
   process.exit(2);
 }
+
 const appDir = path.resolve(target);
-const runner = createRunner({ verbose: flag('--verbose'), label: 'create-app' });
+const runner = createRunner({ verbose: opts.verbose, label: 'create-app' });
 const { step, note, run, fail } = runner;
-const skipInstall = flag('--skip-install');
+const skipInstall = opts['skip-install'];
 
 // Template example code that the starter replaces; root-level folders cover templates that do not use src/.
 const TEMPLATE_CODE = ['src/app', 'src/components', 'src/hooks', 'src/constants', 'src/global.css', 'scripts/reset-project.js', 'app', 'components', 'hooks', 'constants'];
 
 if (appDir.startsWith(skillDir + path.sep)) fail('Create the app outside the skill folder.');
-const modules = resolveModules((option('--modules') ?? '').split(',').map((name) => name.trim()), fail);
+const modules = resolveModules((opts.modules ?? '').split(',').map((name) => name.trim()), fail);
 
 // ── 1. the project ──
-if (flag('--existing')) {
+if (opts.existing) {
   step(`Using the existing project at ${appDir}`);
   if (!fs.existsSync(path.join(appDir, 'package.json'))) fail('No package.json — run create-expo-app first, or drop --existing.');
 } else {
@@ -89,7 +118,7 @@ if (flag('--existing')) {
 }
 const pkg = JSON.parse(fs.readFileSync(path.join(appDir, 'package.json'), 'utf8'));
 if (!pkg.dependencies?.expo || !pkg.dependencies?.['expo-router']) fail('This is not an expo-router project from create-expo-app (expo or expo-router missing).');
-if (fs.existsSync(path.join(appDir, 'modules.json')) && !flag('--force')) fail('The starter is already applied here (modules.json exists). Use add-module.mjs to add modules, or --force to start over.');
+if (fs.existsSync(path.join(appDir, 'modules.json')) && !opts.force) fail('The starter is already applied here (modules.json exists). Use add-module.mjs to add modules, or --force to start over.');
 
 // ── 2. core and modules ──
 step(`Applying the core${modules.length ? ` and ${modules.length} module(s): ${modules.map((module) => module.name).join(', ')}` : ' (no modules — add them later with add-module.mjs)'}`);
@@ -99,13 +128,14 @@ for (const [from, to] of [['PROJECT_BRIEF.template.md', 'PROJECT_BRIEF.md'], ['H
   const destination = path.join(appDir, 'docs', to);
   if (!fs.existsSync(destination)) fs.copyFileSync(path.join(skillDir, 'assets', from), destination);
 }
-if (flag('--conductor')) {
+if (opts.conductor) {
   fs.mkdirSync(path.join(appDir, '.conductor'), { recursive: true });
   for (const file of ['settings.toml', 'setup.sh']) fs.copyFileSync(path.join(skillDir, 'assets', 'conductor', file), path.join(appDir, '.conductor', file));
 }
 for (const module of modules) copyModuleFiles(appDir, module);
 writeGenerated(appDir, modules);
 mergeOpenApi(appDir, modules);
+ensureAgentInstructions(appDir);
 writeDocs(appDir, modules);
 
 // Template images nothing refers to any more (tab icons, logos used by the example screens).
@@ -126,16 +156,16 @@ const slugify = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').repla
 let identity = '';
 patchJson(path.join(appDir, 'app.json'), (appJson) => {
   const expo = appJson.expo;
-  const name = option('--name') ?? expo.name;
-  const slug = slugify(option('--name') ?? expo.slug ?? path.basename(appDir));
-  const bundleId = option('--bundle-id') ?? `com.example.${slug.replace(/-/g, '')}`;
+  const name = opts.name ?? expo.name;
+  const slug = slugify(opts.name ?? expo.slug ?? path.basename(appDir));
+  const bundleId = opts['bundle-id'] ?? `com.example.${slug.replace(/-/g, '')}`;
   if (!/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(bundleId)) fail(`"${bundleId}" is not a valid bundle id (reverse domain, letters/digits/underscores).`);
   Object.assign(expo, { name, slug, scheme: slug.replace(/-/g, ''), orientation: 'default' });
   expo.ios = { ...expo.ios, bundleIdentifier: bundleId, buildNumber: expo.ios?.buildNumber ?? '1', supportsTablet: true, config: { ...expo.ios?.config, usesNonExemptEncryption: expo.ios?.config?.usesNonExemptEncryption ?? false } };
   expo.android = { ...expo.android, package: bundleId, versionCode: expo.android?.versionCode ?? 1 };
   expo.web = { ...expo.web, output: 'static' };
   expo.extra = { ...expo.extra, legal: expo.extra?.legal ?? { privacyUrl: 'https://example.com/privacy', termsUrl: 'https://example.com/terms', supportEmail: 'support@example.com' } };
-  identity = `${name} · ${bundleId}${option('--bundle-id') ? '' : ' (placeholder — store builds refuse it until the real one is set)'}`;
+  identity = `${name} · ${bundleId}${opts['bundle-id'] ? '' : ' (placeholder — store builds refuse it until the real one is set)'}`;
 });
 addPlugins(appDir, [...CORE_PLUGINS, ...modules.flatMap((module) => module.plugins ?? [])]);
 note(identity);
@@ -148,7 +178,7 @@ try {
 }
 ensureGitignore(appDir);
 patchJson(path.join(appDir, 'package.json'), (value) => {
-  value.name = slugify(option('--name') ?? path.basename(appDir));
+  value.name = slugify(opts.name ?? path.basename(appDir));
   delete value.scripts?.['reset-project'];
   value.scripts = { ...value.scripts, ...SCRIPTS };
 });
@@ -170,7 +200,7 @@ step('Installing lint, test and type tooling');
 installTooling(appDir, runner);
 step('Generating API types from docs/openapi.json');
 run(npm, ['run', 'api:types'], { cwd: appDir });
-if (!flag('--skip-check')) {
+if (!opts['skip-check']) {
   step('Typecheck, lint and unit tests');
   const result = run(npm, ['test'], { cwd: appDir, hint: 'Unit tests failed.' });
   const passed = /ℹ pass (\d+)/.exec(`${result.stdout ?? ''}`)?.[1];

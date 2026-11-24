@@ -12,6 +12,10 @@
         "symptom",
         "parse",
         "silently"
+      ],
+      "must_not_include": [
+        "good fix, applying",
+        "i applied {{ total || 0 }}"
       ]
     },
     {
@@ -37,6 +41,10 @@
         "evidence",
         "instrument",
         "guess"
+      ],
+      "must_not_include": [
+        "fixed and verified",
+        "this will definitely fix it"
       ]
     },
     {

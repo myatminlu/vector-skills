@@ -211,7 +211,7 @@ Rules for the message:
 | File | Holds | Why not somewhere else |
 |---|---|---|
 | `docs/PROJECT_BRIEF.md` | The seven packs as answered, every decision and assumption with its date and reason, accepted risks (`assets/PROJECT_BRIEF.template.md`) | Decisions that no amount of reading the code reveals; agent memory stays on one machine and one folder |
-| `CLAUDE.md` (or `AGENTS.md`) | The working agreement and the project's standing rules (`assets/CLAUDE.template.md`) | Loaded by every agent in every clone and worktree |
+| `AGENTS.md` (plus `CLAUDE.md` `@AGENTS.md`) | The working agreement and the project's standing rules (`assets/CLAUDE.template.md`) | Loaded by every coding agent in every clone and worktree |
 | `docs/HUMAN_TASKS.md` | Console and legal tasks, lead times, what to send back (`assets/HUMAN_TASKS.template.md`) | The human works from it without chat |
 | `docs/SCREENS.md` | The screen inventory and its gaps | The route map, the gate per screen, the frame numbers for review rounds |
 | `docs/API_REQUESTS.md` | Numbered requests to the backend: what is missing, why, and what the app does if it is not there in time | Forwardable as it is; the backend has lead time too |

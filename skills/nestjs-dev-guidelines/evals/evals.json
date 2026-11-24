@@ -12,6 +12,11 @@
         "controller",
         "Blocker",
         "suggestion"
+      ],
+      "must_not_include": [
+        "ready to merge",
+        "no blockers found",
+        "looks good to merge"
       ]
     },
     {
@@ -37,6 +42,10 @@
         "cross-cutting",
         "Express",
         "decorator"
+      ],
+      "must_not_include": [
+        "rewrite the app to nestjs",
+        "add @controller decorators"
       ]
     },
     {
@@ -130,7 +139,7 @@
     {
       "id": 11,
       "prompt": "Review this login endpoint for security: @Post('login') login(@Body() body: any) { const user = await this.db.find({email: body.email}); if (password.verify(user.password, body.password)) return user; }. What security issues exist, and what is the correct order of checks?",
-      "expected_output": "Flags: no DTO validation (injection risk), plain 'any' type, timing leak from a faster missing-user path, no rate limit, no account lockout, credentials logged or exposed, no secure password hashing verification shown. Cites OWASP Top 10, brute-force protection, and authentication patterns. Explains the correct check order: DTO validation \u2192 rate-limit check \u2192 user lookup \u2192 same-cost password verification using a dummy hash when the user is missing \u2192 session creation with only hashed session/refresh tokens stored server-side.",
+      "expected_output": "Flags: no DTO validation (injection risk), plain 'any' type, timing leak from a faster missing-user path, no rate limit, no account lockout, credentials logged or exposed, no secure password hashing verification shown. Cites OWASP Top 10, brute-force protection, and authentication patterns. Explains the correct check order: DTO validation → rate-limit check → user lookup → same-cost password verification using a dummy hash when the user is missing → session creation with only hashed session/refresh tokens stored server-side.",
       "files": [],
       "must_include": [
         "DTO",
@@ -168,7 +177,7 @@
     {
       "id": 14,
       "prompt": "You have a choice: raw pg, TypeORM, Prisma, or Drizzle for a new NestJS service. The service needs multi-tenant data isolation, complex queries, background job workers, and type safety. Which ORM would you recommend and why? What are the trade-offs?",
-      "expected_output": "Recommends Prisma or Drizzle for type safety and dev ergonomics. Explains raw pg for max control but requires manual type safety; TypeORM has more ceremony; Prisma has excellent TypeScript integration but less control over raw SQL; Drizzle balances both. For multi-tenant isolation, explains that the ORM doesn't enforce it\u2014the query (WHERE tenant_id = ?) must be explicit at the repository layer, regardless of choice. Cites orm-patterns guidance.",
+      "expected_output": "Recommends Prisma or Drizzle for type safety and dev ergonomics. Explains raw pg for max control but requires manual type safety; TypeORM has more ceremony; Prisma has excellent TypeScript integration but less control over raw SQL; Drizzle balances both. For multi-tenant isolation, explains that the ORM doesn't enforce it—the query (WHERE tenant_id = ?) must be explicit at the repository layer, regardless of choice. Cites orm-patterns guidance.",
       "files": [],
       "must_include": [
         "Prisma",
@@ -206,7 +215,7 @@
     {
       "id": 17,
       "prompt": "A NestJS request arrives with a JWT in the Authorization header. The app has an @UseGuards(JwtAuthGuard), @UsePipes(ValidationPipe), and an @UseInterceptors(LoggingInterceptor). In what order do these execute, and at what point does business logic (the route handler) run?",
-      "expected_output": "Order: Guard \u2192 Interceptor (pre) \u2192 Pipe \u2192 Handler \u2192 Interceptor (post) \u2192 Global exception filter. Explains why: guards check access before anything runs; pipes transform/validate input before handler; interceptors wrap the whole chain. Handler runs last, after all guards and pipes. References pipelines-interceptors-guards guidance.",
+      "expected_output": "Order: Guard → Interceptor (pre) → Pipe → Handler → Interceptor (post) → Global exception filter. Explains why: guards check access before anything runs; pipes transform/validate input before handler; interceptors wrap the whole chain. Handler runs last, after all guards and pipes. References pipelines-interceptors-guards guidance.",
       "files": [],
       "must_include": [
         "Guard",
@@ -219,7 +228,7 @@
     {
       "id": 18,
       "prompt": "A user is created in the users service. The billing module needs to set up a trial subscription, and the email service needs to send a welcome email. These happen independently (no failure cascade). Should you use EventEmitter2 or the outbox pattern? When would you choose each?",
-      "expected_output": "EventEmitter2 for in-process, in-transaction events (user created \u2192 fire event \u2192 listeners within same app). Outbox pattern when events cross service boundaries or go to a message queue. For single NestJS app: EventEmitter2 + @transactional + listeners that can fail independently. For distributed: emit to outbox table in the same transaction, then a background job publishes events to Kafka/RabbitMQ. References events and background-jobs guidance.",
+      "expected_output": "EventEmitter2 for in-process, in-transaction events (user created → fire event → listeners within same app). Outbox pattern when events cross service boundaries or go to a message queue. For single NestJS app: EventEmitter2 + @transactional + listeners that can fail independently. For distributed: emit to outbox table in the same transaction, then a background job publishes events to Kafka/RabbitMQ. References events and background-jobs guidance.",
       "files": [],
       "must_include": [
         "EventEmitter2",
@@ -231,7 +240,7 @@
     {
       "id": 19,
       "prompt": "Design a background job to process LLM requests asynchronously. The job should be retryable, survive crashes, not re-process the same request twice, and route failures to a dead-letter queue. Which tool do you use, and what does the handler look like?",
-      "expected_output": "Uses BullMQ with Redis. Handler: (1) read input, (2) call LLM, (3) store result, (4) return status. Idempotency: use a request_id; check if result already exists before calling LLM. Retries: default exponential backoff; poison messages (repeated failures) \u2192 DLQ. Explains why: idempotency prevents duplication; DLQ prevents infinite loops. References background-jobs and observability guidance.",
+      "expected_output": "Uses BullMQ with Redis. Handler: (1) read input, (2) call LLM, (3) store result, (4) return status. Idempotency: use a request_id; check if result already exists before calling LLM. Retries: default exponential backoff; poison messages (repeated failures) → DLQ. Explains why: idempotency prevents duplication; DLQ prevents infinite loops. References background-jobs and observability guidance.",
       "files": [],
       "must_include": [
         "BullMQ",
@@ -283,7 +292,7 @@
     {
       "id": 23,
       "prompt": "Write a unit test for a service method that hashes a password. Write an e2e test for a login endpoint. When should you mock dependencies, and when should you use a real database? Can you mock the service under test?",
-      "expected_output": "Unit test: test the hashing logic with mocked crypto (or real hashing library, not mocked). E2e test: real DB, real HTTP layer, real request/response. Mock external APIs (Stripe, LLM), not internal logic. Never mock the class under test\u2014that just re-asserts the mock. For service: test with mocked repository or real DB fixture. Explains: test boundaries (HTTP, DB, external APIs), not internals. References testing guidance.",
+      "expected_output": "Unit test: test the hashing logic with mocked crypto (or real hashing library, not mocked). E2e test: real DB, real HTTP layer, real request/response. Mock external APIs (Stripe, LLM), not internal logic. Never mock the class under test—that just re-asserts the mock. For service: test with mocked repository or real DB fixture. Explains: test boundaries (HTTP, DB, external APIs), not internals. References testing guidance.",
       "files": [],
       "must_include": [
         "boundar",
@@ -321,7 +330,7 @@
     {
       "id": 26,
       "prompt": "Expand the LLM streaming endpoint design: the endpoint should support multiple LLM providers (OpenAI, Anthropic, Gemini), handle provider outages gracefully, manage rate limits per provider, and track usage per user. Outline the architecture.",
-      "expected_output": "LLM gateway service with provider abstraction. Gateway selects provider based on availability, cost, quota. Implements: retry logic, fallback to secondary provider, rate-limit headers. Usage tracking: per-call token + cost stored in DB, aggregated per user/model for quota enforcement. Observability: Langfuse/Helicone for LLM tracing. Error handling: provider timeout \u2192 fallback; quota exceeded \u2192 429. References ai-product-patterns, ai-usage-metering, observability guidance.",
+      "expected_output": "LLM gateway service with provider abstraction. Gateway selects provider based on availability, cost, quota. Implements: retry logic, fallback to secondary provider, rate-limit headers. Usage tracking: per-call token + cost stored in DB, aggregated per user/model for quota enforcement. Observability: Langfuse/Helicone for LLM tracing. Error handling: provider timeout → fallback; quota exceeded → 429. References ai-product-patterns, ai-usage-metering, observability guidance.",
       "files": [],
       "must_include": [
         "gateway",
@@ -516,7 +525,7 @@
     {
       "id": 41,
       "prompt": "Design the API surface for a payments resource: a list endpoint, a create endpoint that charges a card, a full update, a partial update, a refund action, and a delete. What are the URLs, HTTP verbs, status codes on success, and which endpoints need an idempotency key? How is versioning handled?",
-      "expected_output": "URLs use plural noun and URI versioning under `/v1/payments`. GET /v1/payments (200, paginated list). POST /v1/payments creates a charge (201 + Location header) and MUST require an `Idempotency-Key` header because it has money side-effects. PUT /v1/payments/:id full replace (200/204, idempotent). PATCH /v1/payments/:id partial update (200, not idempotent without an idempotency key). POST /v1/payments/:id/refund as a sub-resource action (201/200) and also needs an idempotency key. DELETE /v1/payments/:id (204, idempotent). Bumps v1\u2192v2 only on breaking changes; additive fields stay in v1. Cites api-design guidance.",
+      "expected_output": "URLs use plural noun and URI versioning under `/v1/payments`. GET /v1/payments (200, paginated list). POST /v1/payments creates a charge (201 + Location header) and MUST require an `Idempotency-Key` header because it has money side-effects. PUT /v1/payments/:id full replace (200/204, idempotent). PATCH /v1/payments/:id partial update (200, not idempotent without an idempotency key). POST /v1/payments/:id/refund as a sub-resource action (201/200) and also needs an idempotency key. DELETE /v1/payments/:id (204, idempotent). Bumps v1→v2 only on breaking changes; additive fields stay in v1. Cites api-design guidance.",
       "files": [],
       "must_include": [
         "v1",
@@ -529,7 +538,7 @@
     {
       "id": 42,
       "prompt": "Review this service: `@Injectable() export class InvoiceService { private repo = new InvoiceRepository(); async process(input: any): Promise<any> { /* 180 lines: validate, fetch user, compute tax, charge card, update DB, send email, log to S3, retry on failure, fall back to second provider */ } }`. What code-quality rules does this break, and how should you refactor it?",
-      "expected_output": "Flags multiple violations: (1) `new InvoiceRepository()` instead of constructor DI \u2014 breaks testability and lifecycle management; (2) `input: any` and `Promise<any>` \u2014 should be a typed DTO and a typed return; (3) one 180-line method does validation, payment, persistence, notification, logging, and provider fallback \u2014 violates single-responsibility; (4) provider-fallback logic belongs behind a gateway abstraction, not inline. Refactor: inject InvoiceRepository, PaymentGateway, Mailer, AuditLogger via constructor; replace `any` with `ProcessInvoiceInput` DTO and `Invoice` return type; split into small methods (validate, charge, persist, notify) orchestrated by a thin process(); push retry/fallback into the PaymentGateway. Cites code-quality and ai-product/payment gateway guidance.",
+      "expected_output": "Flags multiple violations: (1) `new InvoiceRepository()` instead of constructor DI — breaks testability and lifecycle management; (2) `input: any` and `Promise<any>` — should be a typed DTO and a typed return; (3) one 180-line method does validation, payment, persistence, notification, logging, and provider fallback — violates single-responsibility; (4) provider-fallback logic belongs behind a gateway abstraction, not inline. Refactor: inject InvoiceRepository, PaymentGateway, Mailer, AuditLogger via constructor; replace `any` with `ProcessInvoiceInput` DTO and `Invoice` return type; split into small methods (validate, charge, persist, notify) orchestrated by a thin process(); push retry/fallback into the PaymentGateway. Cites code-quality and ai-product/payment gateway guidance.",
       "files": [],
       "must_include": [
         "DI",
@@ -541,8 +550,8 @@
     },
     {
       "id": 43,
-      "prompt": "A NestJS endpoint lets a user fetch a document: GET /v1/documents/:id. The route is protected by JwtAuthGuard, and the user has the role `editor`. The handler calls `this.docs.findById(id)` and returns the row. Two questions: (1) is role-based access (RBAC) enough here, or do you also need an ownership/object-level check, and why? (2) where should each check live \u2014 guard, service, or repository?",
-      "expected_output": "RBAC alone is not enough. Role checks answer 'is this user allowed to use this kind of endpoint at all', but they don't stop user A (also an editor) from reading user B's document \u2014 that's IDOR. You need an object-level authorization check that the document belongs to the requester (or their org/tenant). Layering: JwtAuthGuard authenticates and attaches request.user (who); a RolesGuard or @Roles decorator enforces the coarse role (what kind of action); the service/repository layer enforces ownership/tenant by including `WHERE owner_id = :userId` (or tenant_id) in the query, derived from the authenticated context \u2014 never from the URL or body. Tests must prove user A cannot read user B's document even with a valid JWT. Cites security, authentication-patterns, multi-tenancy-patterns, and the non-negotiable that every ID from the URL is checked against the authenticated user's ownership.",
+      "prompt": "A NestJS endpoint lets a user fetch a document: GET /v1/documents/:id. The route is protected by JwtAuthGuard, and the user has the role `editor`. The handler calls `this.docs.findById(id)` and returns the row. Two questions: (1) is role-based access (RBAC) enough here, or do you also need an ownership/object-level check, and why? (2) where should each check live — guard, service, or repository?",
+      "expected_output": "RBAC alone is not enough. Role checks answer 'is this user allowed to use this kind of endpoint at all', but they don't stop user A (also an editor) from reading user B's document — that's IDOR. You need an object-level authorization check that the document belongs to the requester (or their org/tenant). Layering: JwtAuthGuard authenticates and attaches request.user (who); a RolesGuard or @Roles decorator enforces the coarse role (what kind of action); the service/repository layer enforces ownership/tenant by including `WHERE owner_id = :userId` (or tenant_id) in the query, derived from the authenticated context — never from the URL or body. Tests must prove user A cannot read user B's document even with a valid JWT. Cites security, authentication-patterns, multi-tenancy-patterns, and the non-negotiable that every ID from the URL is checked against the authenticated user's ownership.",
       "files": [],
       "must_include": [
         "RBAC",
@@ -555,7 +564,7 @@
     {
       "id": 44,
       "prompt": "GET /v1/orders was running one query per order to load its line items, so a teammate rewrote the repository as `createQueryBuilder('order').leftJoinAndSelect('order.items', 'item').limit(20).offset(0)`. It's fast now, but QA says some pages come back with 3 orders instead of 20, and one order showed up on two different pages. What went wrong, and what is the correct fix? We also need to add payments to the same response.",
-      "expected_output": "Identifies row multiplication: joining a one-to-many multiplies rows per parent, and SQL LIMIT/OFFSET counts joined rows, not orders \u2014 so a page of 20 joined rows may be 3 orders, and offsets slice mid-order causing duplicates across pages. Fix: use entity-aware paging (`take`/`skip`, which pages parent ids first) or, preferably for a paginated list, a two-query batch-load \u2014 page the orders, then load items with `WHERE order_id = ANY($1)` and stitch via a Map. Warns that adding payments as a second sibling one-to-many JOIN produces a cartesian product (items \u00d7 payments per order) and must be a separate query, not another leftJoinAndSelect. Recommends a query-count regression test with fixtures holding more than one child per parent, since one-child fixtures hide the bug. Cites the N+1 elimination and pagination guidance.",
+      "expected_output": "Identifies row multiplication: joining a one-to-many multiplies rows per parent, and SQL LIMIT/OFFSET counts joined rows, not orders — so a page of 20 joined rows may be 3 orders, and offsets slice mid-order causing duplicates across pages. Fix: use entity-aware paging (`take`/`skip`, which pages parent ids first) or, preferably for a paginated list, a two-query batch-load — page the orders, then load items with `WHERE order_id = ANY($1)` and stitch via a Map. Warns that adding payments as a second sibling one-to-many JOIN produces a cartesian product (items × payments per order) and must be a separate query, not another leftJoinAndSelect. Recommends a query-count regression test with fixtures holding more than one child per parent, since one-child fixtures hide the bug. Cites the N+1 elimination and pagination guidance.",
       "files": [],
       "must_include": [
         "N+1",
@@ -567,8 +576,8 @@
     },
     {
       "id": 45,
-      "prompt": "I think one of our NestJS endpoints has an N+1 but I can't prove it \u2014 Postgres slow-query logging shows nothing unusual and every query is under 2ms. How do I actually confirm it, find it in production, and then make sure it doesn't come back after the next refactor?",
-      "expected_output": "Explains why slow-query logs miss N+1: it is a query-count problem, not a per-query latency problem \u2014 each of the N queries is individually fast. Confirm by counting queries per request (Prisma `$on('query')`, a TypeORM counting logger, or a proxied pg Pool injected in the test module) and checking whether the count scales with the number of rows returned; the dev-log signal is the same SQL repeated back to back with different params. In production: count db.client spans per request trace (a staircase of identical short spans) and look for a query whose `calls` in pg_stat_statements dwarfs the traffic of any endpoint that would legitimately call it once. Prevent regression with an e2e query-count test that asserts the count is unchanged between a 1-row and a 20-row seed \u2014 assert the flat slope rather than a brittle absolute number \u2014 with fixtures that have more than one child per parent. Cites the N+1 elimination, observability, and testing guidance.",
+      "prompt": "I think one of our NestJS endpoints has an N+1 but I can't prove it — Postgres slow-query logging shows nothing unusual and every query is under 2ms. How do I actually confirm it, find it in production, and then make sure it doesn't come back after the next refactor?",
+      "expected_output": "Explains why slow-query logs miss N+1: it is a query-count problem, not a per-query latency problem — each of the N queries is individually fast. Confirm by counting queries per request (Prisma `$on('query')`, a TypeORM counting logger, or a proxied pg Pool injected in the test module) and checking whether the count scales with the number of rows returned; the dev-log signal is the same SQL repeated back to back with different params. In production: count db.client spans per request trace (a staircase of identical short spans) and look for a query whose `calls` in pg_stat_statements dwarfs the traffic of any endpoint that would legitimately call it once. Prevent regression with an e2e query-count test that asserts the count is unchanged between a 1-row and a 20-row seed — assert the flat slope rather than a brittle absolute number — with fixtures that have more than one child per parent. Cites the N+1 elimination, observability, and testing guidance.",
       "files": [],
       "must_include": [
         "N+1",
@@ -581,7 +590,7 @@
     {
       "id": 46,
       "prompt": "Our /v1/orders list endpoint issues exactly one query in the repository, but p95 latency still grows with page size. The repository code looks clean. Where else can an N+1 hide? And if the answer is DataLoader, how do I wire it in NestJS without making half the app request-scoped?",
-      "expected_output": "Lists the non-loop shapes: a mapper/DTO factory that takes a service and resolves a name per item; lazy relation access (TypeORM `Promise<T[]>` props) inside a `.map()`, where `Promise.all` makes it concurrent but still N queries; a per-item resolver or response-enriching interceptor; a per-item cache `getOrSet` that hides the N+1 until the cache goes cold; a loop of HTTP calls to another service; and per-item authorization checks that should be pushed into the WHERE clause instead. For DataLoader: it must be per-request for a security reason, not just performance \u2014 a singleton loader caches rows across requests and serves one tenant's data to another. Wire it by keeping loaders in an AsyncLocalStorage-backed store (nestjs-cls) behind a singleton registry, rather than a `Scope.REQUEST` provider whose scope cascades to every consumer and rebuilds the DI graph per request. Notes the batch-function contract: return one entry per key, in key order, with a placeholder for missing rows, and filter by tenant inside the batch function. Cites N+1 elimination, decorators/scopes, and multi-tenancy guidance.",
+      "expected_output": "Lists the non-loop shapes: a mapper/DTO factory that takes a service and resolves a name per item; lazy relation access (TypeORM `Promise<T[]>` props) inside a `.map()`, where `Promise.all` makes it concurrent but still N queries; a per-item resolver or response-enriching interceptor; a per-item cache `getOrSet` that hides the N+1 until the cache goes cold; a loop of HTTP calls to another service; and per-item authorization checks that should be pushed into the WHERE clause instead. For DataLoader: it must be per-request for a security reason, not just performance — a singleton loader caches rows across requests and serves one tenant's data to another. Wire it by keeping loaders in an AsyncLocalStorage-backed store (nestjs-cls) behind a singleton registry, rather than a `Scope.REQUEST` provider whose scope cascades to every consumer and rebuilds the DI graph per request. Notes the batch-function contract: return one entry per key, in key order, with a placeholder for missing rows, and filter by tenant inside the batch function. Cites N+1 elimination, decorators/scopes, and multi-tenancy guidance.",
       "files": [],
       "must_include": [
         "mapper",

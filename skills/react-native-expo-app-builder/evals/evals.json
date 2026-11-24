@@ -13,6 +13,10 @@
         ".env",
         "lead time",
         "brief"
+      ],
+      "must_not_include": [
+        "scaffolding all 32 screens now",
+        "paste your password in chat"
       ]
     },
     {
@@ -25,6 +29,10 @@
         "primitive",
         "device",
         "fixture"
+      ],
+      "must_not_include": [
+        "i cannot scaffold without",
+        "refusing until the backend is finished"
       ]
     },
     {

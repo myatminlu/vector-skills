@@ -15,7 +15,7 @@ export default function AppLayout() {
   const { t } = useI18n();
   return (
     <Stack screenOptions={stackOptions(colors)}>
-      {shell.tabs ? <Stack.Screen name="(tabs)" options={{ headerShown: false }} /> : <Stack.Screen name="index" options={{ headerShown: false }} />}
+      {shell.tabs ? <Stack.Screen name="(tabs)" options={{ headerShown: false, title: '' }} /> : <Stack.Screen name="index" options={{ headerShown: false, title: '' }} />}
       {shell.tabs ? null : <Stack.Screen name="account" options={{ title: '' }} />}
       <Stack.Screen name="item/[id]" options={{ title: '' }} />
       <Stack.Screen name="dev/gallery" options={{ title: 'Gallery' }} />

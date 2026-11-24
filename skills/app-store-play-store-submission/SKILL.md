@@ -44,7 +44,7 @@ build tools, not versions remembered from an earlier project.
 - **The owner decides policy risks.** State the rule, the options, a recommendation and what remains risky.
 - **Never ask for secrets by value**; credentials live in the user-level build properties, the keychain or the
   environment.
-- **Read the project's own rules first** (`CLAUDE.md`, `docs/PROJECT_BRIEF.md`): who builds what, where artifacts go,
+- **Read the project's own rules first** (`AGENTS.md` / `CLAUDE.md`, `docs/PROJECT_BRIEF.md`): who builds what, where artifacts go,
   what a "small release" raises.
 
 ## Pick the path
@@ -65,11 +65,10 @@ build tools, not versions remembered from an earlier project.
 3. Commit the bump → PR → merge. Confirm the local tree equals the default branch.
 4. Regenerate the native projects for production (`APP_ENV=production npx expo prebuild --clean`) — a stale native
    project re-uploads an old build number.
-5. Build the artifacts; verify each one (`references/02-release.md` §6).
-6. **Launch-test the release build** on the newest OS, phone and tablet (`assets/expo/ios-launch-test.mjs` for iOS;
-   `references/02-release.md` §7 for Android).
+5. Build the artifacts locally (Xcode + Gradle) or via **EAS Build** (`eas build --platform all --profile production`, essential when building iOS from Linux or Windows); verify each one (`references/02-release.md` §6).
+6. **Launch-test the release build** on the newest OS, phone and tablet (`assets/expo/ios-launch-test.mjs` for local iOS, or an EAS simulator/preview + TestFlight / Play Internal Testing install; `references/02-release.md` §7 for Android).
 7. Save artifacts where the project says, never overwriting; compare checksums.
-8. Hand over: absolute paths, signer, version, the exact remaining steps, review notes, accepted risks.
+8. Hand over (or submit via `eas submit`): absolute paths or EAS build URLs, signer, version, the exact remaining steps, review notes, accepted risks.
 
 ## Rejection protocol (short form)
 

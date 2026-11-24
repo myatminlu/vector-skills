@@ -29,7 +29,7 @@ A release build is a different program from the one you have been running. It re
 8. Save artifacts where agreed, under the agreed names; never overwrite; compare checksums after copying.
 9. Send the hand-over report (section 8).
 
-Whoever holds the signing identity does the final archive and upload. On the case-study project the owner archived and uploaded iOS themselves and the agent built the Android bundle; the agent's job on iOS was to hand over a workspace that had already been compiled and launched.
+Whoever holds the signing identity does the final archive and upload. On the case-study project the owner archived and uploaded iOS themselves and the agent built the Android bundle; the agent's job on iOS was to hand over a workspace that had already been compiled and launched. When building from Linux or Windows—or using Expo's cloud pipeline—use **EAS Build** (`eas build --platform all --profile production`) and **EAS Submit** (`eas submit`); the same audit, version bump, default-branch provenance, and `app.config.js` guards apply.
 
 ## 2. Version numbers
 
@@ -66,6 +66,12 @@ Whoever holds the signing identity does the final archive and upload. On the cas
 - An extension's deployment target has to follow the app's. A default left at an ancient value was tolerated by one toolchain version and refused by the next.
 - A toolchain upgrade between two releases can break archiving or launching. After any upgrade, rerun the launch test before trusting the pipeline.
 
+**EAS Build & EAS Submit (cloud / non-macOS hosts)**
+
+- Essential when the developer or CI runner is on Linux or Windows (where local Xcode is absent) or when using managed signing credentials.
+- Set `EAS_BUILD_PROFILE` (e.g. `production`, `preview`) in `eas.json`; `app.config.js` reads `EAS_BUILD_PROFILE` before `APP_ENV`, so the same release env and store-identity guards fire automatically inside EAS cloud builders.
+- Run `eas build --platform all --profile production --non-interactive` from the merged default branch, download/inspect the artifact metadata, then submit with `eas submit --platform all --latest` after human sign-off.
+
 ## 6. Verify the artifact
 
 Before anything is handed over or uploaded:
@@ -97,6 +103,8 @@ What it does:
 It takes about ten minutes. Run it after the production regeneration and before every hand-over.
 
 **Android equivalent:** install the release build on an emulator, launch it, confirm the process is alive after a few seconds and the log shows no fatal exception. When code shrinking is on, also walk every library that relies on reflection — sign-in, purchases, push, media — in the release build; shrinking breaks things only there and only at runtime, so switch it on as its own tested release, never as a last-minute toggle.
+
+**EAS cloud builds (no local Xcode):** verify the Android APK/AAB locally on an emulator, and install the iOS simulator build (`eas build --profile preview --platform ios` with `simulator: true`) on macOS or verify the signed release build via TestFlight / Play Internal Testing before submitting to review.
 
 **Why a launch test and not just three guards.** Each of the three failures now has its own guard: a missing app life-cycle the new SDK required, a dependency install that silently fell back to a different build mode, and a bundle made without its environment. The launch test is the net under the fourth one nobody has met yet.
 

@@ -24,6 +24,10 @@
         "no production code",
         "findings",
         "approval"
+      ],
+      "must_not_include": [
+        "i went ahead and refactored",
+        "edited the production files"
       ]
     },
     {
@@ -37,6 +41,10 @@
         "dependency injection",
         "SUSPECTED",
         "prove"
+      ],
+      "must_not_include": [
+        "yes, safe to delete",
+        "definitely dead code"
       ]
     },
     {

@@ -1,6 +1,6 @@
 ---
 name: code-implementation
-description: Disciplined, architect-grade workflow for implementing, fixing, or refactoring code in an existing codebase. Use this skill for ANY task that will change source code — new features, bug fixes, refactors, integrations, migrations, performance work, or "just a small change" — and especially when the user says something is broken, duplicated, patched-over, inconsistent, or not wired together properly. It forces the agent to read the real code before writing any, trace the root cause instead of patching symptoms, reuse what already exists instead of adding near-duplicate code, and verify the change end to end. Use it even when the fix looks obvious.
+description: Disciplined, architect-grade workflow for implementing features, enhancements, code-level refactors, consolidations, integrations, migrations, and performance work in an existing codebase. Forces reading the real code first, tracing the underlying cause, reusing or unifying existing code instead of duplicating, and verifying end to end with a mandatory pattern sweep. For pure defect/bug diagnosis and fixes (crashes, wrong output, regressions, flaky tests), prefer `bug-fixing`; for folder/file layout moves only, use `project-structure-refactoring`.
 ---
 
 # Code Implementation
@@ -13,6 +13,15 @@ Two failure modes destroy codebases faster than anything else, and both come fro
 2. **Fixing the symptom instead of the cause** — which creates layers of band-aids that each look reasonable in isolation and are collectively unmaintainable.
 
 This skill exists to prevent both. Follow the phases in order. Do not skip phases because a task "looks small" — small tasks are exactly where these failures hide.
+
+---
+
+## Scope and hand-offs
+
+- **This skill owns** features, enhancements, code-level refactors (extract/unify/dedupe/consolidate), integrations, migrations, and performance changes in existing codebases.
+- **Pure defect diagnosis and bug fixes** (crashes, wrong output, flaky tests, regressions, races, memory leaks) → hand off to `bug-fixing` (which pairs deterministic reproduction with Five Whys root-cause analysis).
+- **Pure folder/file moves and layout restructuring** → use `project-structure-refactoring` for the move plan and staged green commits, then return here for any follow-up code-level refactoring.
+- **Read-only reviews** → `code-quality-check` (single file/PR) or `codebase-audit` (whole repo).
 
 ---
 

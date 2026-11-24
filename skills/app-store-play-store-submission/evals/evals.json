@@ -12,6 +12,10 @@
         "reply",
         "same class",
         "full"
+      ],
+      "must_not_include": [
+        "no changes needed",
+        "policy mention alone is enough"
       ]
     },
     {
@@ -26,6 +30,10 @@
         "launch",
         "newest",
         "tablet"
+      ],
+      "must_not_include": [
+        "starting the build now",
+        "ready to upload without testing"
       ]
     },
     {

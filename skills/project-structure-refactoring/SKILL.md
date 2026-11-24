@@ -1,6 +1,6 @@
 ---
 name: project-structure-refactoring
-description: 'Cross-language project structure and structural refactoring standards: design clean folder/module layouts and safely restructure existing codebases. Use when restructuring or reorganizing a codebase, choosing or fixing a repo''s folder structure, deciding where a file belongs, package-by-feature vs by-layer, reorganizing/moving files, planning a migration to a new layout, fixing messy/flat/deep folder trees, splitting a giant or god file into modules, monorepos (apps/packages, workspaces, Turborepo/Nx), Python src layout, Go cmd/internal layout, React/Next.js/Expo feature folders, barrel files, import path aliases, or updating Dockerfiles/CI/configs after file moves. Covers plan-approve-execute staged migrations with green builds, git mv history preservation, and boundary enforcement. Structural only: hand code-level refactoring (extract/rename/dedupe) to code-implementation or codebase-audit, NestJS layout specifics to nestjs-dev-guidelines. Principles apply to any language beyond the stacks documented.'
+description: 'Cross-language project structure and structural refactoring standards for designing folder/module layouts and safely restructuring codebases. Use when reorganizing files, choosing or fixing folder structure, deciding where files belong, package-by-feature vs by-layer, fixing messy/flat/deep trees, splitting giant/god files into modules, monorepos (apps/packages, workspaces, Turborepo/Nx), Python src layout, Go cmd/internal, React/Next.js/Expo feature folders, barrel files, path aliases, or updating Dockerfiles/CI/configs after moves. Covers staged green migrations, git mv history preservation, and boundary enforcement. Structural only: hand code-level refactoring (extract/rename/dedupe) to code-implementation or codebase-audit, NestJS layout specifics to nestjs-dev-guidelines. Principles apply to any language.'
 ---
 
 # Project Structure Refactoring
@@ -82,8 +82,10 @@ Each rule has a **Why** so you can reason about edge cases instead of applying i
    never through deep paths into internals.
    *Why:* one inverted import quietly makes "shared" depend on everything, and every future
    move a breaking change.
-8. **No junk drawers.** No `utils/`, `common/`, `helpers/`, `misc/` dumping grounds. Name
-   modules by their content (`dates.ts`, `money.py`, `retry.go`).
+8. **No junk drawers.** No catch-all `utils.ts`, `helpers/`, or `misc/` dumping grounds. Name
+   modules by their content (`dates.ts`, `money.py`, `retry.go`). Note: structured framework
+   cross-cutting directories organized by role (such as NestJS `src/common/{guards,pipes,decorators,filters}`
+   in `nestjs-dev-guidelines`) are not junk drawers — generic catch-all files are.
    *Why:* a folder named by what it isn't grows monotonically and is unsearchable; naming by
    content forces the "what is this really?" decision that keeps structure honest. See `00`.
 9. **Path-bearing files are part of every move.** Dockerfiles, CI workflows (including
