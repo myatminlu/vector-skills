@@ -22,7 +22,7 @@ so the next app starts where that one ended.
 | Navigation | A stack with Home, Item and Account, typed route builders, a deep link for every screen | `src/app/`, `src/navigation/` |
 | Extension points | Modules register providers, overrides (session, consent, flags, text scale) and contributions (account rows, item actions, screens, tour steps) without editing core files | `src/modules/slots.ts` |
 | Harness | A QA screenshot tour, Maestro flows, a local mock API, a contract smoke script, a release launch test | `src/dev/`, `.maestro/`, `scripts/` |
-| Workspace | CI (typecheck, lint, tests, contract smoke, both production bundles), Dependabot for workflow actions, agent instructions | `.github/`, `CLAUDE.md`, `AGENTS.md` |
+| Workspace | CI (typecheck, lint, tests, contract smoke, both production bundles), Dependabot for workflow actions, agent instructions | `.github/`, `AGENTS.md`, `CLAUDE.md` |
 
 **The modules installed in this app** (listed in `modules.json`):
 
@@ -110,8 +110,7 @@ the app calls.
 
 ## End-to-end tests (Maestro)
 
-Maestro taps through the app on a simulator or emulator (`brew install mobile-dev-inc/tap/maestro`; the e2e script
-finds the JDK Homebrew installs with it).
+Maestro taps through the app on a simulator or emulator (macOS: `brew install mobile-dev-inc/tap/maestro`; Linux/macOS: `curl -Ls "https://get.maestro.mobile.dev" | bash`; Windows: install Maestro + Android Studio Platform Tools). The `e2e` script auto-detects `JAVA_HOME` and `adb` across macOS, Linux, and Windows.
 
 ```bash
 # iOS: a Release build pointed at the mock API (localhost works on the simulator)

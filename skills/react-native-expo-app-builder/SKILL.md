@@ -1,6 +1,6 @@
 ---
 name: react-native-expo-app-builder
-description: Build a production-ready React Native mobile app with Expo for iOS and Android from a design (Figma, screenshots) and an API (OpenAPI or docs). Creates the project on the latest Expo SDK with a tested core plus only the modules the app needs (auth, guest mode, AI consent, SSE streaming, uploads, remote config, offline cache, text size, Burmese, tabs) and Maestro e2e tests. Covers intake, architecture, folder structure, layers and build order. Use when the user starts a new React Native or Expo app, hands over a design or API docs to build from, asks for an app's architecture, folder structure or boilerplate, asks what an AI agent needs to build a whole app in one go, splits a new app build across agents or Conductor workspaces, wants a CLAUDE.md or project brief, or wants Maestro tests. Use it even for "just scaffold the screens". Not for Flutter or one bug in an existing app.
+description: Build a production-ready React Native mobile app with Expo for iOS and Android from a design (Figma, screenshots) and an API (OpenAPI or docs). Creates the project on the latest Expo SDK with a tested core plus only the modules the app needs (auth, guest mode, AI consent, SSE streaming, uploads, remote config, offline cache, text size, Burmese, tabs) and Maestro e2e tests. Covers intake, architecture, folder structure, layers and build order. Use when the user starts a new React Native or Expo app, hands over a design or API docs to build from, asks for an app's architecture, folder structure or boilerplate, asks what an AI agent needs to build a whole app in one go, splits a new app build across agents or worktrees, wants an AGENTS.md / CLAUDE.md or project brief, or wants Maestro tests. Use it even for "just scaffold the screens". Not for Flutter or one bug in an existing app.
 ---
 
 # React Native Expo App Builder
@@ -21,7 +21,7 @@ tester, your memory and your release manager.
 - **Get an architecture that survives store review** — layers, one API client, gates every route passes through.
 - **Build slices in parallel workspaces**, each verified on both platforms.
 - **Test the app yourself** — Maestro on the iOS simulator and the Android emulator, a QA screenshot tour, a hardening matrix.
-- **Hand over a repo another agent can continue** — `CLAUDE.md`, brief, screen inventory, human-task list.
+- **Hand over a repo another agent can continue** — `AGENTS.md`, `CLAUDE.md` (`@AGENTS.md`), brief, screen inventory, human-task list.
 - **Ship it** with the companion skill `app-store-play-store-submission` (audit, release builds, rejections).
 
 ## Quick start
@@ -45,7 +45,7 @@ Run them with the tool sandbox off (network, package cache). Output is about twe
 Pick modules from the brief in Phase 0 — accounts → `auth`; public content → `guest`; personal data to a third-party
 AI → `ai-consent`; an AI chat or live feed → `streaming`; file pickers → `uploads`; something to switch off between
 releases → `remote-config`; reading offline → `offline-cache`; small type or older users → `text-size`; Burmese or
-another tall script → `lang-my`; two or more top-level areas → `tabs`. Modules plug in through `registerModule`
+another tall script → `lang-my` (or copy it as `lang-<code>` with `"language"` in `module.json`); two or more top-level areas → `tabs`. Modules plug in through `registerModule`
 (`src/modules/slots.ts`); none edits a core file, and a feature of the app's own is just another module folder.
 Details: `references/05-build-order.md` §0.
 
@@ -56,7 +56,7 @@ This skill never pins a version, and neither should you. "Latest" is resolved wh
 - **Expo SDK:** `npm view expo dist-tags` → `latest`. New projects come from `create-expo-app@latest`; every Expo or
   React Native library goes in with `npx expo install <pkg>`; upgrades move the whole SDK (`npx expo install
   expo@latest && npx expo install --fix`), never one package.
-- **Tools:** CLIs as `npx <tool>@latest`; Maestro and JDKs from their current releases; GitHub Actions at their current
+- **Tools:** CLIs as `npx <tool>@latest`; Maestro, JDKs, Android SDK, and EAS CLI (`eas-cli`) from their current releases; GitHub Actions at their current
   major (the starter's Dependabot keeps them there).
 - **Knowledge:** the SDK's changelog and upgrade notes (https://expo.dev/changelog), the `AGENTS.md` that
   `create-expo-app` writes, Expo's official skills (`npx skills add expo/skills`) and the versioned docs
@@ -118,7 +118,7 @@ Read `references/01-intake.md` (self-contained, store rules included). Templates
    (category, age rating, legal URLs) · **human task** (console and legal work — starts today).
 4. **Choose the modules** the brief implies (above) and note them in the brief as decisions.
 5. Write `docs/PROJECT_BRIEF.md`, `docs/SCREENS.md`, `docs/API_REQUESTS.md` (including an OpenAPI export if there is
-   none), `docs/HUMAN_TASKS.md` and `CLAUDE.md` — **before** the message, open decisions marked *proposed*.
+   none), `docs/HUMAN_TASKS.md`, `AGENTS.md` and `CLAUDE.md` (`@AGENTS.md`) — **before** the message, open decisions marked *proposed*.
 6. Send **one short kickoff message**: findings in a few lines; the expensive decisions with options, a recommendation
    and what changing later touches; the blocking items; the longest-lead human tasks; a reply template.
 
@@ -135,7 +135,7 @@ Read `references/02-api-contract.md`.
 3. Send **one contract gap report**; agree a fallback per gap (ship a fallback, hide behind a switch, or cut).
 4. **Prove every target with the new app**: debug build on an iOS simulator and an Android emulator, one **release**
    build installed and launched, secure storage, screenshots, deep links and **Maestro taps** on each platform.
-5. Record the toolchain facts (the versions `create-app.mjs` printed, JDK, Xcode, simulator ids) in the brief and `CLAUDE.md`.
+5. Record the toolchain facts (the versions `create-app.mjs` printed, JDK, Xcode, simulator ids) in the brief and `AGENTS.md`.
 
 **Exit when** the first slices' endpoints have verified shapes and the app builds, launches and can be driven on every
 target, in release configuration at least once. No API yet? Use the starter's mock API (`npm run mock-api`) behind the
@@ -167,7 +167,7 @@ with cross-cutting reach becomes a module (`registerModule`); a vendor-heavy one
 
 ## Phase 5 — Hardening matrix
 
-Read `references/06-verification.md`. Tablet and split view, keyboard on both platforms, the tallest script at the
+Read `references/06-verification.md`. Tablet and split view, keyboard on both platforms, the tallest script and RTL/expanded locales (`ar`, `de`, CJK) at the
 largest text size, offline and reconnect, token expiry, cold-start deep links, permission denied, every upload type,
 account switch, guest → sign-in, fresh install. **Exit when** every cell is pass, fixed, or an accepted limitation.
 

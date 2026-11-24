@@ -11,9 +11,9 @@ const { withAppBuildGradle } = require('expo/config-plugins');
  * shipped. The fix cannot live in `android/app/build.gradle`: `expo prebuild` regenerates that file,
  * so it has to be reapplied on every run, which is what this plugin does.
  *
- * Credentials stay out of the repository. Put them in `~/.gradle/gradle.properties` (chmod 600):
+ * Credentials stay out of the repository. Put them in `~/.gradle/gradle.properties` (`%USERPROFILE%\.gradle\gradle.properties` on Windows, chmod 600 on Unix):
  *
- *   MYAPP_UPLOAD_STORE_FILE=/Users/<you>/keystores/myapp-upload.jks
+ *   MYAPP_UPLOAD_STORE_FILE=/path/to/keystores/myapp-upload.jks
  *   MYAPP_UPLOAD_STORE_PASSWORD=…
  *   MYAPP_UPLOAD_KEY_ALIAS=upload
  *   MYAPP_UPLOAD_KEY_PASSWORD=…

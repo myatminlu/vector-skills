@@ -83,12 +83,12 @@ on the then-newest iOS simulator and Android emulator: a guest flow and a sign-i
 sign-out flow passed on both. On the case-study project nothing could tap the iOS simulator, which left the agent
 unable to focus an input, drag a slider or dismiss a system alert on iOS; Maestro closes that gap.
 
-Setup (once per Mac): `brew tap mobile-dev-inc/tap && brew install mobile-dev-inc/tap/maestro` — the current release;
-`brew upgrade maestro` before a project starts. It runs on Java and macOS's `/usr/bin/java` is only a stub, so set
-`JAVA_HOME` to the JDK Homebrew installed with it (`$(brew --prefix openjdk)/libexec/openjdk.jdk/Contents/Home`) if
-`maestro --version` fails; the starter's `npm run e2e` finds it on its own. Check Maestro's docs for the Xcode and
-Java versions it supports when a new Xcode ships. Prove it in Phase 1 with a two-step flow against the system Settings
-app (`com.apple.Preferences` / `com.android.settings`) before any app exists.
+Setup (once per workstation):
+- **macOS:** `brew tap mobile-dev-inc/tap && brew install mobile-dev-inc/tap/maestro` (or `brew upgrade maestro`).
+- **Linux:** `curl -Ls "https://get.maestro.mobile.dev" | bash` (drives Android emulators; iOS builds use EAS cloud builds + macOS runners).
+- **Windows:** install Maestro and JDK 17/21 + Android Studio Platform Tools (`adb.exe`).
+
+Maestro runs on Java: macOS's `/usr/bin/java` is only a stub, and Linux/Windows installs often omit `JAVA_HOME`. The starter's `npm run e2e` (`scripts/e2e.mjs`) automatically resolves `JAVA_HOME` and `adb` across macOS, Linux, and Windows; if `maestro --version` fails in your shell, set `JAVA_HOME` manually (on macOS, `$(brew --prefix openjdk)/libexec/openjdk.jdk/Contents/Home`). Check Maestro's docs for the Xcode and Java versions it supports when a new Xcode ships. Prove it in Phase 1 with a two-step flow against the system Settings app (`com.apple.Preferences` / `com.android.settings`) before any app exists.
 
 Conventions that made the flows reliable:
 
@@ -100,7 +100,7 @@ Conventions that made the flows reliable:
 - **Expect the system to interrupt**: iOS offers "Save Password?" after a login form, Android password managers do the
   same. A `dismiss-system-prompts` subflow taps "Not Now" only `when: visible`.
 - **Make platform differences conditional**, not separate flows: hiding the keyboard on iOS can press the return key and
-  submit the form, so tap the submit button only `when: visible`; going back is the header's "Back" on iOS and the
+  submit the form, so tap the submit button only `when: visible`; going back is UIKit's `BackButton` id on iOS and the
   system back on Android (a `back` subflow with `when: platform`).
 - **Run against release builds** pointed at a local mock API — the same backend on every run. The iOS simulator reaches
   the Mac's `localhost`; the Android emulator needs `adb reverse tcp:<port> tcp:<port>`, and an Android release build
@@ -160,6 +160,7 @@ Run every row before the first submission. "Seen" is what the row cost the case-
 | 1 | Tablet, split view, landscape | Every screen holds a centred column; sheets size to content; primary buttons are not stranded at the bottom of a tall screen | 51-file retrofit; floating composers hugged the left edge |
 | 2 | Keyboard | The focused field and the primary action stay visible on **both** platforms; the keyboard closes when a drawer or sheet opens | Composers under the keyboard on Android for a week |
 | 3 | Tallest script at the largest text size | No clipping in titles, chips, inputs, buttons; fixed-size boxes opt out | Clipped glyph tops across the app |
+| 3b | RTL (`ar`, `he`) & text expansion (`de`, `ru`, CJK) | Logical `start`/`end` spacing, mirrored directional icons, 30–40% width headroom, no unintended truncation | — |
 | 4 | OS font scale at maximum | Layouts hold within the caps | — |
 | 5 | Offline → online | Banner appears and clears; data resumes without a restart | App stayed "offline" after the network returned |
 | 6 | Session | Expired access token refreshes silently; a refused refresh signs out; a transient failure does **not**; sign-out works offline | "Does the refresh token really work?" |

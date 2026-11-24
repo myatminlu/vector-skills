@@ -14,22 +14,48 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { parseArgs } from 'node:util';
 
-import { addPlugins, catalog, copyModuleFiles, createRunner, expoInstall, installedModules, mergeOpenApi, npm, printCatalog, resolveModules, writeDocs, writeGenerated } from './lib/starter.mjs';
+import { addPlugins, copyModuleFiles, createRunner, expoInstall, installedModules, mergeOpenApi, npm, printCatalog, resolveModules, writeDocs, writeGenerated } from './lib/starter.mjs';
 
-const argv = process.argv.slice(2);
-const flag = (name) => argv.includes(name);
-if (flag('--list')) {
+const USAGE =
+  'Usage: node add-module.mjs <app-dir> <module> [<module> …] [--skip-install] [--skip-check] [--verbose]\n       node add-module.mjs --list';
+
+let parsed;
+try {
+  parsed = parseArgs({
+    args: process.argv.slice(2),
+    options: {
+      list: { type: 'boolean', default: false },
+      help: { type: 'boolean', short: 'h', default: false },
+      'skip-install': { type: 'boolean', default: false },
+      'skip-check': { type: 'boolean', default: false },
+      verbose: { type: 'boolean', default: false },
+    },
+    allowPositionals: true,
+    strict: true,
+  });
+} catch (error) {
+  console.error(`${error.message}\n${USAGE}`);
+  process.exit(2);
+}
+
+const { values: opts, positionals } = parsed;
+if (opts.help) {
+  console.log(USAGE);
+  process.exit(0);
+}
+if (opts.list) {
   printCatalog();
   process.exit(0);
 }
-const [target, ...requested] = argv.filter((arg) => !arg.startsWith('--'));
+const [target, ...requested] = positionals;
 if (!target || !requested.length) {
-  console.error('Usage: node add-module.mjs <app-dir> <module> [<module> …] [--skip-install] [--skip-check] [--verbose]\n       node add-module.mjs --list');
+  console.error(USAGE);
   process.exit(2);
 }
 const appDir = path.resolve(target);
-const runner = createRunner({ verbose: flag('--verbose'), label: 'add-module' });
+const runner = createRunner({ verbose: opts.verbose, label: 'add-module' });
 const { step, note, run, fail } = runner;
 if (!fs.existsSync(path.join(appDir, 'modules.json'))) fail(`${appDir} has no modules.json — it was not made with create-app.mjs.`);
 
@@ -49,7 +75,7 @@ writeDocs(appDir, all);
 addPlugins(appDir, added.flatMap((module) => module.plugins ?? []));
 
 const dependencies = added.flatMap((module) => module.dependencies ?? []);
-if (flag('--skip-install')) {
+if (opts['skip-install']) {
   step('Skipping installs (--skip-install). To finish:');
   if (dependencies.length) note(`npx expo install ${dependencies.join(' ')}`);
   note('npm run api:types && npm run check');
@@ -61,7 +87,7 @@ if (dependencies.length) {
 }
 step('Regenerating API types');
 run(npm, ['run', 'api:types'], { cwd: appDir });
-if (!flag('--skip-check')) {
+if (!opts['skip-check']) {
   step('Typecheck, lint and unit tests');
   run(npm, ['run', 'check'], { cwd: appDir, hint: 'If the latest SDK moved an API, fix the module code forward.' });
 }
@@ -71,4 +97,3 @@ console.log(`
   ${native.length ? `New native code (${native.map((module) => module.name).join(', ')}): make a new development build (npm run ios / npm run android).` : 'No native code added: a running development client picks the change up.'}
   Log: ${runner.logFile}
 `);
-void catalog;

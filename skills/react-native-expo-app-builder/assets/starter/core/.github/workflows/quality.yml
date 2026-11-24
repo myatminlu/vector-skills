@@ -30,7 +30,7 @@ jobs:
       - name: Production bundles (both platforms)
         env:
           EXPO_PUBLIC_API_URL: https://api.example.com
-        run: npx expo export --platform ios --platform android --output-dir /tmp/expo-export
+        run: npx expo export --platform ios --platform android --output-dir "$RUNNER_TEMP/expo-export"
 
   # Dependency drift is worth seeing, but a check that is always red teaches everyone to ignore checks.
   doctor:

@@ -1,0 +1,21 @@
+{
+  "name": "vector-skills",
+  "version": "1.0.0",
+  "description": "Agent skills for Expo/React Native apps, App Store & Google Play submissions, NestJS backends, and senior engineering workflows.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/myatminlu/vector-skills.git"
+  },
+  "bin": {
+    "create-vector-expo-app": "./skills/react-native-expo-app-builder/scripts/create-app.mjs"
+  },
+  "scripts": {
+    "validate": "node -e \"const {spawnSync}=require('child_process');let r=spawnSync('python3',['scripts/validate-skills.py'],{stdio:'inherit'});if(r.error)r=spawnSync('python',['scripts/validate-skills.py'],{stdio:'inherit'});process.exit(r.status??1)\"",
+    "test": "node --test tests/starter-scripts.test.mjs",
+    "check": "npm run validate && npm test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

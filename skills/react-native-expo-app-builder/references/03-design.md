@@ -69,6 +69,8 @@ A design shows each screen once, full of perfect data. A person meets these inst
 | Long text | Wrap, or truncate with "read more" |
 | Largest text size | Nothing clips; fixed-height boxes opt out explicitly |
 | Second language / tall script | Line height from the font, not from the Latin design |
+| RTL locale (`ar`, `he`, `fa`, `ur`) | `I18nManager` mirroring, logical `start`/`end` spacing, directional icons flipped |
+| Text expansion / CJK (`de`, `ru`, `es`, `ja`, `zh`, `ko`) | 30–40% width headroom on labels/buttons; line wrapping tested without clipping |
 | Keyboard up | The focused field and the primary action stay visible — on both platforms |
 | Tablet width | One centred reading column; forms narrower still |
 | End of a list, pull to refresh | — |
@@ -134,6 +136,8 @@ People rarely write all five. When a request arrives as one sentence, restate it
 ## 9. Type, copy and brand assets
 
 - **Non-Latin scripts:** take line height from the font's own metrics, not from the Latin numbers in the design. Text inputs choose the font from the placeholder too, or a placeholder in the second script falls back to a system font and clips. Check the tallest glyph clusters in titles, chips and inputs, on both platforms — they clip differently.
+- **RTL scripts (`ar`, `he`, `fa`, `ur`):** use logical layout properties (`marginStart`/`marginEnd`, `paddingStart`/`paddingEnd`, `textAlign: 'auto'`) instead of `left`/`right`, flip directional icons (chevrons, back arrows, progress bars) when `I18nManager.isRTL` is true, and test an RTL locale in `expo-localization` early.
+- **Text expansion & CJK (`de`, `ru`, `es`, `ja`, `zh`, `ko`):** leave 30–40% horizontal room in buttons, tabs, and badges so translations do not truncate mid-word, and verify CJK/unspaced line wrapping across phone and tablet widths.
 - **Reading text:** start body and chat text at about 16 pt. If the audience skews older or reads a dense script, plan an in-app text-size setting; it is a foundation feature, not a late one.
 - **Copy rules** from the brief become a search you run before every commit that touches strings.
 - **Every string goes through localisation from the first screen,** in every language, guarded by a parity test.

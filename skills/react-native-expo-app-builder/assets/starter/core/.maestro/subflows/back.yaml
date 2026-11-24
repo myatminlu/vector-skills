@@ -1,11 +1,12 @@
-# Back one screen on either platform: the native header's back button on iOS, the system back on Android.
+# Back one screen on either platform: UIKit's native BackButton identifier on iOS, system back on Android.
 appId: ${APP_ID}
 ---
 - runFlow:
     when:
       platform: iOS
     commands:
-      - tapOn: "Back"
+      - tapOn:
+          id: BackButton
 - runFlow:
     when:
       platform: Android

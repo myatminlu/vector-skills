@@ -6,7 +6,7 @@
  *   npm run e2e -- --device <iOS simulator UDID | emulator-5554> [--flow .maestro/guest.yaml] [--no-mock]
  *
  * Build the app for it once (see README → "End-to-end tests"): APP_ENV=e2e and EXPO_PUBLIC_API_URL pointing at
- * http://localhost:4010. On Android the emulator reaches the Mac's port through `adb reverse`, which this script sets.
+ * http://localhost:4010. On Android the emulator reaches the host port through `adb reverse`, which this script sets.
  */
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -26,27 +26,65 @@ const useMock = !args.includes('--no-mock');
 const port = Number(process.env.MOCK_PORT ?? 4010);
 
 if (!device) {
-  console.error('Pass --device <iOS simulator UDID | emulator-5554>. List them with `xcrun simctl list devices booted` and `adb devices`.');
+  console.error('Pass --device <iOS simulator UDID | emulator-5554>. List them with `xcrun simctl list devices booted` (macOS) or `adb devices`.');
   process.exit(2);
 }
 
-// Maestro runs on Java; macOS's /usr/bin/java is only a stub. If JAVA_HOME is not set, use the JDK Homebrew
-// installed with Maestro (`openjdk`), then any other Homebrew JDK, then whatever /usr/libexec/java_home reports.
+const isWin = process.platform === 'win32';
+const javaBin = isWin ? 'java.exe' : 'java';
+
+function findJavaHome() {
+  const candidates = [];
+  if (process.platform === 'darwin') {
+    const brewOpt = ['/opt/homebrew/opt', '/usr/local/opt'].find((dir) => fs.existsSync(dir));
+    const brewJdks = brewOpt
+      ? fs
+          .readdirSync(brewOpt)
+          .filter((name) => /^openjdk(@\d+)?$/.test(name))
+          .sort((a, b) => (a === 'openjdk' ? -1 : b === 'openjdk' ? 1 : b.localeCompare(a, undefined, { numeric: true })))
+      : [];
+    for (const name of brewJdks) candidates.push(path.join(brewOpt, name, 'libexec', 'openjdk.jdk', 'Contents', 'Home'));
+    const javaHome = spawnSync('/usr/libexec/java_home', { encoding: 'utf8' });
+    if (javaHome.status === 0) candidates.push(javaHome.stdout.trim());
+  } else if (isWin) {
+    for (const base of [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.LOCALAPPDATA].filter(Boolean)) {
+      for (const vendor of ['Eclipse Adoptium', 'Java', 'Microsoft']) {
+        const dir = path.join(base, vendor);
+        if (!fs.existsSync(dir)) continue;
+        for (const sub of fs.readdirSync(dir).sort().reverse()) candidates.push(path.join(dir, sub));
+      }
+    }
+  } else {
+    candidates.push(path.join(os.homedir(), '.sdkman', 'candidates', 'java', 'current'), '/usr/lib/jvm/default-java');
+    if (fs.existsSync('/usr/lib/jvm')) {
+      for (const sub of fs.readdirSync('/usr/lib/jvm').filter((n) => /openjdk|temurin|java-/.test(n)).sort().reverse()) {
+        candidates.push(path.join('/usr/lib/jvm', sub));
+      }
+    }
+  }
+  return candidates.find((candidate) => candidate && fs.existsSync(path.join(candidate, 'bin', javaBin)));
+}
+
+// Maestro runs on Java; macOS's /usr/bin/java is only a stub, and Linux/Windows installs often omit JAVA_HOME.
 if (!process.env.JAVA_HOME) {
-  const brewOpt = ['/opt/homebrew/opt', '/usr/local/opt'].find((dir) => fs.existsSync(dir));
-  const brewJdks = brewOpt
-    ? fs.readdirSync(brewOpt).filter((name) => /^openjdk(@\d+)?$/.test(name)).sort((a, b) => (a === 'openjdk' ? -1 : b === 'openjdk' ? 1 : b.localeCompare(a, undefined, { numeric: true })))
-    : [];
-  const candidates = brewJdks.map((name) => path.join(brewOpt, name, 'libexec', 'openjdk.jdk', 'Contents', 'Home'));
-  const javaHome = spawnSync('/usr/libexec/java_home', { encoding: 'utf8' });
-  if (javaHome.status === 0) candidates.push(javaHome.stdout.trim());
-  const found = candidates.find((candidate) => fs.existsSync(path.join(candidate, 'bin', 'java')));
+  const found = findJavaHome();
   if (found) process.env.JAVA_HOME = found;
 }
 
-// adb is rarely on PATH; the SDK's copy always exists where Android Studio put it.
-const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? path.join(os.homedir(), 'Library', 'Android', 'sdk');
-const adb = fs.existsSync(path.join(sdk, 'platform-tools', 'adb')) ? path.join(sdk, 'platform-tools', 'adb') : 'adb';
+function findAdb() {
+  const adbBin = isWin ? 'adb.exe' : 'adb';
+  const defaultSdk =
+    process.platform === 'darwin'
+      ? path.join(os.homedir(), 'Library', 'Android', 'sdk')
+      : isWin
+        ? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'Android', 'Sdk')
+        : path.join(os.homedir(), 'Android', 'Sdk');
+  const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? defaultSdk;
+  const candidate = path.join(sdk, 'platform-tools', adbBin);
+  return fs.existsSync(candidate) ? candidate : adbBin;
+}
+
+const adb = findAdb();
 
 const { expo } = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8'));
 const isAndroid = /^emulator-\d+$|:\d+$/.test(device) || spawnSync(adb, ['-s', device, 'get-state'], { encoding: 'utf8' }).stdout?.trim() === 'device';
@@ -81,7 +119,14 @@ if (isAndroid) execFileSync(adb, ['-s', device, 'reverse', `tcp:${port}`, `tcp:$
 const email = process.env.QA_EMAIL ?? 'demo@example.com';
 const password = process.env.QA_PASSWORD ?? 'demo1234';
 console.log(`Maestro → ${isAndroid ? 'Android' : 'iOS'} ${device} · ${appId} · ${path.relative(root, flow) || flow}`);
-const result = spawnSync('maestro', ['--device', device, 'test', flow, '-e', `APP_ID=${appId}`, '-e', `QA_EMAIL=${email}`, '-e', `QA_PASSWORD=${password}`], { stdio: 'inherit', env: process.env });
+const maestroArgs = ['--device', device, 'test', flow, '-e', `APP_ID=${appId}`, '-e', `QA_EMAIL=${email}`, '-e', `QA_PASSWORD=${password}`];
+const result = isWin
+  ? spawnSync(
+      process.env.ComSpec || 'cmd.exe',
+      ['/d', '/s', '/c', `"${['maestro', ...maestroArgs.map((a) => (/[ \t"&()<>^|]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a))].join(' ')}"`],
+      { stdio: 'inherit', env: process.env, windowsVerbatimArguments: true },
+    )
+  : spawnSync('maestro', maestroArgs, { stdio: 'inherit', env: process.env });
 
 mock?.kill();
 process.exit(result.status ?? 1);

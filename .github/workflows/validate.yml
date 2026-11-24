@@ -1,0 +1,30 @@
+# Validates skill frontmatter, relative paths, eval schemas, grade.py self-tests, shared-asset parity,
+# plugin manifests, and starter script tests across Linux, macOS, and Windows.
+name: Validate skills and scripts
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    name: validate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Validate skills, evals, manifests, and shared assets
+        run: python scripts/validate-skills.py
+      - name: Run starter script and guard unit tests
+        run: node --test tests/starter-scripts.test.mjs

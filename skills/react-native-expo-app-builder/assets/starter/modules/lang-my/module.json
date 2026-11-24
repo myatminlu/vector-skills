@@ -1,8 +1,13 @@
 {
   "name": "lang-my",
   "title": "Burmese (Myanmar) language",
-  "summary": "Burmese strings for the core and every module, Burmese digits, the language picker in Account, Noto Sans Myanmar and the 2.2× line-height rule for Myanmar text. Copy it as `lang-<code>` for another language with a tall script (Thai, Khmer…).",
+  "summary": "Burmese strings for the core and every module, Burmese digits, the language picker in Account, Noto Sans Myanmar and the 2.2× line-height rule for Myanmar text. Copy it as `lang-<code>` and set `\"language\"` in `module.json` to wire another language automatically.",
   "when": "The app ships in Burmese, or as the template for another tall-script language.",
+  "language": {
+    "code": "my",
+    "exportName": "burmese",
+    "stringsExport": "my"
+  },
   "requires": [],
   "dependencies": ["@expo-google-fonts/noto-sans-myanmar"],
   "plugins": [],

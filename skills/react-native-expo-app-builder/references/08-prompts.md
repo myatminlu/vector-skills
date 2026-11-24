@@ -141,10 +141,10 @@ Say what you were trying to do. A console screenshot with no words leaves the ag
 
 ```
 Remember: Android bundles always go in <folder>, named app-<version>-<build>.aab.
-Put it in CLAUDE.md.
+Put it in AGENTS.md.
 ```
 
-Agent memory stays on one machine and one folder. `CLAUDE.md` travels with the repository.
+Agent memory stays on one machine and one folder. `AGENTS.md` (imported by `CLAUDE.md` via `@AGENTS.md`) travels with the repository across all agents.
 
 ## 12. Prompts to replace
 

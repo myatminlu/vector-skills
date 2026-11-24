@@ -12,8 +12,23 @@ export const skillDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)
 export const coreDir = path.join(skillDir, 'assets', 'starter', 'core');
 const modulesDir = path.join(skillDir, 'assets', 'starter', 'modules');
 
-/** Install order — a module always comes after the modules it requires. */
-export const MODULE_ORDER = ['auth', 'guest', 'ai-consent', 'streaming', 'uploads', 'remote-config', 'offline-cache', 'text-size', 'lang-my', 'tabs'];
+/** Default install order — a module always comes after the modules it requires; extra lang-* or custom modules slot before tabs. */
+const BASE_MODULE_ORDER = ['auth', 'guest', 'ai-consent', 'streaming', 'uploads', 'remote-config', 'offline-cache', 'text-size', 'lang-my', 'tabs'];
+
+function discoverModuleOrder() {
+  const onDisk = fs.existsSync(modulesDir)
+    ? fs
+        .readdirSync(modulesDir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && fs.existsSync(path.join(modulesDir, entry.name, 'module.json')))
+        .map((entry) => entry.name)
+    : [];
+  const base = BASE_MODULE_ORDER.filter((name) => onDisk.includes(name));
+  const extras = onDisk.filter((name) => !BASE_MODULE_ORDER.includes(name)).sort();
+  const tabsIndex = base.indexOf('tabs');
+  return tabsIndex === -1 ? [...base, ...extras] : [...base.slice(0, tabsIndex), ...extras, ...base.slice(tabsIndex)];
+}
+
+export const MODULE_ORDER = discoverModuleOrder();
 
 /** Runtime libraries the core imports beyond the default template. Versions come from `npx expo install`. */
 export const CORE_DEPENDENCIES = ['expo-sqlite', 'expo-localization', 'expo-dev-client', 'expo-build-properties', '@react-native-community/netinfo', '@tanstack/react-query'];
@@ -32,18 +47,39 @@ export const SCRIPTS = {
   'export:all': 'expo export --platform ios --platform android',
   'mock-api': 'node scripts/mock-api.mjs',
   'api:smoke': 'node scripts/api-smoke.mjs',
-  'api:types': 'npx --yes openapi-typescript@latest "${OPENAPI_SPEC:-docs/openapi.json}" -o src/types/openapi.d.ts',
+  'api:types': 'node scripts/api-types.mjs',
   e2e: 'node scripts/e2e.mjs',
   bump: 'node scripts/bump-build.mjs',
   'ios:launch-test': 'node scripts/ios-launch-test.mjs',
 };
 
 const GITIGNORE_LINES = ['# local env (the real values live in the repository root\'s .env; .env.example is the list of keys)', '.env', '# Maestro artifacts', '.maestro/out/'];
+const PROJECT_RULES_START = '<!-- starter-project-rules -->';
+const PROJECT_RULES_END = '<!-- end-starter-project-rules -->';
 
-// ── output ───────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── output & process execution ───────────────────────────────────────────────────────────────────────────────────
 
 const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+function winQuote(arg) {
+  if (arg === '') return '""';
+  return /[ \t"&()<>^|]/.test(arg) ? `"${arg.replace(/"/g, '""')}"` : arg;
+}
+
+/**
+ * Runs a command without triggering Node's CVE-2024-27980 EINVAL on Windows `.cmd`/`.bat` shims.
+ */
+export function spawnCrossPlatform(command, args, options = {}) {
+  if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(command)) {
+    const cmdLine = `"${[command, ...args.map(winQuote)].join(' ')}"`;
+    return spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', cmdLine], {
+      ...options,
+      windowsVerbatimArguments: true,
+    });
+  }
+  return spawnSync(command, args, options);
+}
 
 /**
  * One line per step on the console; every command's full output in a log file. An agent reading this output pays for
@@ -68,8 +104,9 @@ export function createRunner({ verbose = false, label = 'starter' } = {}) {
     note: (text) => console.log(`  ${text}`),
     run(command, args, { cwd, hint } = {}) {
       log(`\n$ ${command} ${args.join(' ')}   (in ${cwd})`);
-      const result = spawnSync(command, args, { cwd, encoding: 'utf8', stdio: verbose ? 'inherit' : 'pipe', maxBuffer: 256 * 1024 * 1024 });
+      const result = spawnCrossPlatform(command, args, { cwd, encoding: 'utf8', stdio: verbose ? 'inherit' : 'pipe', maxBuffer: 256 * 1024 * 1024 });
       if (!verbose) log(`${result.stdout ?? ''}${result.stderr ?? ''}`);
+      if (result.error) fail(`\`${command} ${args.join(' ')}\` failed: ${result.error.message}.${hint ? ` ${hint}` : ''}`);
       if (result.status !== 0) fail(`\`${command} ${args.join(' ')}\` exited with ${result.status ?? result.signal}.${hint ? ` ${hint}` : ''}`);
       return result;
     },
@@ -129,7 +166,29 @@ export function copyModuleFiles(target, module) {
   for (const relative of module.remove ?? []) fs.rmSync(path.join(target, relative), { force: true });
 }
 
-const identifier = (name) => name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+const identifier = (name) => name.replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase());
+
+/**
+ * Ensures AGENTS.md holds the starter's standing project rules while preserving any SDK guide `create-expo-app`
+ * already wrote above them. CLAUDE.md imports `@AGENTS.md`, so all agents read one source of truth.
+ */
+export function ensureAgentInstructions(target) {
+  const fragment = fs.readFileSync(path.join(skillDir, 'assets', 'PROJECT_RULES.fragment.md'), 'utf8').trimEnd();
+  const file = path.join(target, 'AGENTS.md');
+  if (!fs.existsSync(file)) {
+    fs.writeFileSync(file, `${fragment}\n`);
+    return;
+  }
+  const existing = fs.readFileSync(file, 'utf8');
+  const start = existing.indexOf(PROJECT_RULES_START);
+  const end = existing.indexOf(PROJECT_RULES_END);
+  if (start !== -1 && end !== -1 && end >= start) {
+    const updated = `${existing.slice(0, start)}${fragment}${existing.slice(end + PROJECT_RULES_END.length)}`;
+    fs.writeFileSync(file, `${updated.trimEnd()}\n`);
+    return;
+  }
+  fs.writeFileSync(file, `${existing.trimEnd()}\n\n${fragment}\n`);
+}
 
 /** `modules.json`, `src/modules/index.ts`, `src/modules/strings.ts` and `.maestro/config.yaml` for a module set. */
 export function writeGenerated(target, modules) {
@@ -143,15 +202,49 @@ export function writeGenerated(target, modules) {
   const withStrings = names.filter((name) => fs.existsSync(path.join(target, 'src/modules', name, 'strings.ts')));
   const lines = [header + '// The installed modules\' strings and the extra languages — plain data, so Node tests can import it.', "import type { ExtraLanguage } from '@/i18n/languages';"];
   for (const name of withStrings) lines.push(`import { strings as ${identifier(name)} } from './${name}/strings';`);
-  const burmese = names.includes('lang-my');
-  if (burmese) {
-    lines.push("import { burmese } from './lang-my/language';", "import { my as myCore } from './lang-my/strings/core';");
-    for (const name of withStrings) if (fs.existsSync(path.join(target, 'src/modules/lang-my/strings', `${name}.ts`))) lines.push(`import { my as my${identifier(name)[0].toUpperCase()}${identifier(name).slice(1)} } from './lang-my/strings/${name}';`);
+
+  const langModules = modules.filter((module) => module.language || /^lang-([a-z0-9-]+)$/.test(module.name));
+  const usedLangVars = new Set(withStrings.map(identifier));
+  const langEntries = [];
+
+  for (const langModule of langModules) {
+    const meta = langModule.language ?? {};
+    const code = meta.code ?? langModule.name.replace(/^lang-/, '');
+    const prefix = identifier(code.toLowerCase());
+    const exportName = meta.exportName ?? 'language';
+    const stringsExport = meta.stringsExport ?? prefix;
+    let langVar = exportName === 'language' ? `${prefix}Language` : exportName;
+    if (usedLangVars.has(langVar)) langVar = `${prefix}Language`;
+    usedLangVars.add(langVar);
+
+    if (langVar === exportName) {
+      lines.push(`import { ${exportName} } from './${langModule.name}/language';`);
+    } else {
+      lines.push(`import { ${exportName} as ${langVar} } from './${langModule.name}/language';`);
+    }
+
+    const parts = [];
+    const stringsDir = path.join(target, 'src/modules', langModule.name, 'strings');
+    if (fs.existsSync(path.join(stringsDir, 'core.ts'))) {
+      const coreVar = `${prefix}Core`;
+      lines.push(`import { ${stringsExport} as ${coreVar} } from './${langModule.name}/strings/core';`);
+      parts.push(`...${coreVar}`);
+    }
+    for (const name of withStrings) {
+      if (fs.existsSync(path.join(stringsDir, `${name}.ts`))) {
+        const camel = identifier(name);
+        const modVar = `${prefix}${camel[0].toUpperCase()}${camel.slice(1)}`;
+        lines.push(`import { ${stringsExport} as ${modVar} } from './${langModule.name}/strings/${name}';`);
+        parts.push(`...${modVar}`);
+      }
+    }
+    langEntries.push({ langVar, parts });
   }
+
   lines.push('', `export const moduleStrings = {${withStrings.length ? ` ${withStrings.map((name) => `...${identifier(name)}`).join(', ')} ` : ''}};`, '');
-  if (burmese) {
-    const myParts = ['...myCore', ...withStrings.filter((name) => fs.existsSync(path.join(target, 'src/modules/lang-my/strings', `${name}.ts`))).map((name) => `...my${identifier(name)[0].toUpperCase()}${identifier(name).slice(1)}`)];
-    lines.push(`export const extraLanguages: ExtraLanguage[] = [{ ...burmese, strings: { ${myParts.join(', ')} } }];`);
+  if (langEntries.length) {
+    const items = langEntries.map(({ langVar, parts }) => `{ ...${langVar}, strings: { ${parts.join(', ')} } }`).join(', ');
+    lines.push(`export const extraLanguages: ExtraLanguage[] = [${items}];`);
   } else {
     lines.push('export const extraLanguages: ExtraLanguage[] = [];');
   }
@@ -199,11 +292,13 @@ function replaceBetween(file, startMarker, endMarker, lines) {
   fs.writeFileSync(file, `${text.slice(0, startEnd)}${lines.map((line) => `${line}\n`).join('')}${text.slice(end)}`);
 }
 
-/** The module sections of SCREENS, DATA_INVENTORY, CLAUDE.md and README, rewritten for the installed set. */
+/** The module sections of SCREENS, DATA_INVENTORY, AGENTS.md, CLAUDE.md and README, rewritten for the installed set. */
 export function writeDocs(target, modules) {
   replaceAfterMarker(path.join(target, 'docs/SCREENS.md'), '<!-- module screens:', modules.flatMap((module) => module.screens ?? []));
   replaceAfterMarker(path.join(target, 'docs/DATA_INVENTORY.md'), '<!-- module data:', modules.flatMap((module) => module.dataInventory ?? []));
-  replaceBetween(path.join(target, 'CLAUDE.md'), '<!-- module rules:', '<!-- end module rules -->', modules.flatMap((module) => (module.claudeRules ?? []).map((rule) => `- ${rule}`)));
+  const ruleLines = modules.flatMap((module) => (module.claudeRules ?? []).map((rule) => `- ${rule}`));
+  replaceBetween(path.join(target, 'AGENTS.md'), '<!-- module rules:', '<!-- end module rules -->', ruleLines);
+  replaceBetween(path.join(target, 'CLAUDE.md'), '<!-- module rules:', '<!-- end module rules -->', ruleLines);
   replaceBetween(
     path.join(target, 'README.md'),
     '<!-- modules:',
